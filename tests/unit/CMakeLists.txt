@@ -9,9 +9,19 @@ add_executable(
   timestamp_parser_test.cpp
 )
 
+set(LOGINSIGHT_TEST_FIXTURES_DIR tests/fixtures)
+
+add_custom_target(
+  loginsight_copy_test_fixtures
+  COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/tests/fixtures
+          ${CMAKE_BINARY_DIR}/${LOGINSIGHT_TEST_FIXTURES_DIR}
+)
+
+add_dependencies(loginsight_unit_tests loginsight_copy_test_fixtures)
+
 target_compile_definitions(
   loginsight_unit_tests
-  PRIVATE LOGINSIGHT_TEST_FIXTURES_DIR="${CMAKE_SOURCE_DIR}/tests/fixtures"
+  PRIVATE LOGINSIGHT_TEST_FIXTURES_DIR="${LOGINSIGHT_TEST_FIXTURES_DIR}"
 )
 
 target_link_libraries(
@@ -22,4 +32,4 @@ target_link_libraries(
 loginsight_enable_warnings(loginsight_unit_tests)
 
 include(GoogleTest)
-gtest_discover_tests(loginsight_unit_tests)
+gtest_discover_tests(loginsight_unit_tests WORKING_DIRECTORY ${CMAKE_BINARY_DIR})

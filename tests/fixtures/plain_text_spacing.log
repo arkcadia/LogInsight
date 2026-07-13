@@ -1,0 +1,2 @@
+2026-07-13 18:42:10   INFO   api-gateway   Request completed: status=200 path=/checkout
+2026-07-13 18:42:11 WARNING   worker-1   Queue depth is 42; threshold=30.

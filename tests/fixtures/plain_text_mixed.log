@@ -1,6 +1,7 @@
-2026-07-13 18:42:04 INFO gateway Import started
-not a valid log line
-2026-99-13 18:42:04 WARN gateway Invalid month
-2026-07-13 18:42:04 NOTICE gateway Unsupported level
-2026-07-13 18:42:04 ERROR payment-service
-2026-07-13 18:45:10 ERROR worker Import finished with issues
+2026-07-13 18:42:10 INFO gateway Import started: batch=17
+2026-99-13 18:42:11 WARN worker Invalid month should fail
+
+2026-07-13 18:42:12 NOTICE gateway Unsupported level
+2026-07-13 18:42:13 ERROR
+2026-07-13 18:42:14 WARN worker
+2026-07-13 18:42:15 ERROR payment-service Import finished with 2 errors

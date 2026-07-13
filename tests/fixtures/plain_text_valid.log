@@ -1,7 +1,7 @@
-2026-07-13 18:42:04 TRACE gateway Trace details enabled
-2026-07-13 18:42:05 DEBUG cache Cache lookup started
-2026-07-13 18:42:06 INFO api Service started
-2026-07-13 18:42:07 WARNING worker High memory usage
-2026-07-13 18:42:08 WARN database Slow query detected
-2026-07-13 18:42:09 ERROR payment-service Database connection failed
-2026-07-13 18:42:10 CRITICAL storage Disk is full
+2026-07-13 18:42:10 TRACE gateway Trace details enabled for request id=42
+2026-07-13 18:42:11 DEBUG auth-service Session cache hit for user 1001
+2026-07-13 18:42:12 INFO payment-service Payment accepted: amount=49.95 currency=EUR
+2026-07-13 18:42:13 WARNING inventory-service Stock below threshold: sku=BK-204 count=3
+2026-07-13 18:42:14 WARN worker Retry scheduled in 30s after timeout
+2026-07-13 18:42:15 ERROR database Connection failed: code=1049, retry=2
+2026-07-13 18:42:16 CRITICAL storage Disk /var/log is 99% full!

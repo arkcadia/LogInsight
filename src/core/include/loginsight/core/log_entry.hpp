@@ -17,6 +17,7 @@ struct LogEntry {
   LogLevel level{LogLevel::unknown};
   LogSource source{};
   std::string message{};
+  std::string rawContent{};
   LogAttributes attributes{};
 
   friend bool operator==(const LogEntry&, const LogEntry&) = default;

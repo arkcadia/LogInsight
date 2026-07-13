@@ -1,4 +1,4 @@
-add_library(loginsight_parsers STATIC src/parser_module.cpp)
+add_library(loginsight_parsers STATIC src/parser_module.cpp src/plain_text_log_parser.cpp)
 add_library(LogInsight::parsers ALIAS loginsight_parsers)
 
 target_include_directories(

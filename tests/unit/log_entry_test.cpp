@@ -30,6 +30,7 @@ TEST(LogEntryTest, StoresNormalizedLogData) {
       .level = LogLevel::warning,
       .source = source,
       .message = "Failed password",
+      .rawContent = "2026-07-12 15:21:04 WARNING Failed password",
       .attributes = {{"pid", "1234"}, {"user", "alice"}},
   };
 
@@ -37,6 +38,7 @@ TEST(LogEntryTest, StoresNormalizedLogData) {
   EXPECT_EQ(entry.level, LogLevel::warning);
   EXPECT_EQ(entry.source, source);
   EXPECT_EQ(entry.message, "Failed password");
+  EXPECT_EQ(entry.rawContent, "2026-07-12 15:21:04 WARNING Failed password");
   EXPECT_EQ(entry.attributes.at("pid"), "1234");
   EXPECT_EQ(entry.attributes.at("user"), "alice");
 }

@@ -1,0 +1,6 @@
+2026-07-12 15:21:04 INFO Import started
+not a valid log line
+2026-99-12 15:21:04 WARN Invalid month
+2026-07-12 15:21:04 NOTICE Unsupported level
+2026-07-12 15:21:04 ERROR
+2026-07-12 15:25:10 ERROR Import finished with issues

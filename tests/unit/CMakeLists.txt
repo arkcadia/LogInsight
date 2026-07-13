@@ -1,4 +1,4 @@
-add_executable(loginsight_unit_tests core_version_test.cpp)
+add_executable(loginsight_unit_tests core_version_test.cpp log_entry_test.cpp log_level_test.cpp)
 
 target_link_libraries(loginsight_unit_tests PRIVATE LogInsight::core GTest::gtest_main)
 

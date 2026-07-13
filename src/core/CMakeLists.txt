@@ -1,4 +1,4 @@
-add_library(loginsight_core STATIC src/version.cpp)
+add_library(loginsight_core STATIC src/log_level.cpp src/version.cpp)
 add_library(LogInsight::core ALIAS loginsight_core)
 
 target_include_directories(

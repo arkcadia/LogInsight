@@ -2,9 +2,7 @@
 
 #include <chrono>
 #include <filesystem>
-#include <fstream>
 #include <sstream>
-#include <string>
 
 #include <gtest/gtest.h>
 
@@ -22,20 +20,13 @@ namespace {
   return std::chrono::time_point_cast<LogTimestamp::duration>(value);
 }
 
-[[nodiscard]] std::ifstream open_fixture(const std::string& name) {
-  const auto path = std::filesystem::path{LOGINSIGHT_TEST_FIXTURES_DIR} / name;
-  std::ifstream file{path};
-  EXPECT_TRUE(file.is_open()) << "Unable to open fixture: " << path;
-  return file;
-}
-
 } // namespace
 
 TEST(PlainTextLogParserTest, ParsesValidFixture) {
-  auto file = open_fixture("plain_text_valid.log");
   const PlainTextLogParser parser;
+  const auto path = std::filesystem::path{LOGINSIGHT_TEST_FIXTURES_DIR} / "plain_text_valid.log";
 
-  const auto result = parser.parse(file, "plain_text_valid.log");
+  const auto result = parser.parse(path);
 
   ASSERT_FALSE(result.has_errors());
   ASSERT_EQ(result.entries.size(), 7U);
@@ -56,10 +47,10 @@ TEST(PlainTextLogParserTest, ParsesValidFixture) {
 }
 
 TEST(PlainTextLogParserTest, KeepsImportingAfterMalformedLines) {
-  auto file = open_fixture("plain_text_mixed.log");
   const PlainTextLogParser parser;
+  const auto path = std::filesystem::path{LOGINSIGHT_TEST_FIXTURES_DIR} / "plain_text_mixed.log";
 
-  const auto result = parser.parse(file, "plain_text_mixed.log");
+  const auto result = parser.parse(path);
 
   ASSERT_EQ(result.entries.size(), 2U);
   ASSERT_EQ(result.errors.size(), 4U);
@@ -72,20 +63,20 @@ TEST(PlainTextLogParserTest, KeepsImportingAfterMalformedLines) {
   EXPECT_EQ(result.entries[1].message, "Import finished with issues");
   EXPECT_EQ(result.entries[1].rawContent, "2026-07-12 15:25:10 ERROR Import finished with issues");
 
-  EXPECT_EQ(result.errors[0].line_number, 2U);
-  EXPECT_EQ(result.errors[0].line, "not a valid log line");
+  EXPECT_EQ(result.errors[0].lineNumber, 2U);
+  EXPECT_EQ(result.errors[0].rawContent, "not a valid log line");
   EXPECT_EQ(result.errors[0].message, "line is too short for the expected plain text format");
 
-  EXPECT_EQ(result.errors[1].line_number, 3U);
-  EXPECT_EQ(result.errors[1].line, "2026-99-12 15:21:04 WARN Invalid month");
+  EXPECT_EQ(result.errors[1].lineNumber, 3U);
+  EXPECT_EQ(result.errors[1].rawContent, "2026-99-12 15:21:04 WARN Invalid month");
   EXPECT_EQ(result.errors[1].message, "invalid timestamp");
 
-  EXPECT_EQ(result.errors[2].line_number, 4U);
-  EXPECT_EQ(result.errors[2].line, "2026-07-12 15:21:04 NOTICE Unsupported level");
+  EXPECT_EQ(result.errors[2].lineNumber, 4U);
+  EXPECT_EQ(result.errors[2].rawContent, "2026-07-12 15:21:04 NOTICE Unsupported level");
   EXPECT_EQ(result.errors[2].message, "unsupported log level");
 
-  EXPECT_EQ(result.errors[3].line_number, 5U);
-  EXPECT_EQ(result.errors[3].line, "2026-07-12 15:21:04 ERROR");
+  EXPECT_EQ(result.errors[3].lineNumber, 5U);
+  EXPECT_EQ(result.errors[3].rawContent, "2026-07-12 15:21:04 ERROR");
   EXPECT_EQ(result.errors[3].message, "missing message");
 }
 
@@ -99,6 +90,28 @@ TEST(PlainTextLogParserTest, ParsesWarnAsWarning) {
   ASSERT_EQ(result.entries.size(), 1U);
   EXPECT_EQ(result.entries.front().level, LogLevel::warning);
   EXPECT_EQ(result.entries.front().message, "Slow query detected");
+}
+
+TEST(PlainTextLogParserTest, ReportsFileOpenFailure) {
+  const PlainTextLogParser parser;
+  const auto path = std::filesystem::path{LOGINSIGHT_TEST_FIXTURES_DIR} / "missing.log";
+
+  const auto result = parser.parse(path);
+
+  EXPECT_TRUE(result.entries.empty());
+  ASSERT_EQ(result.errors.size(), 1U);
+  EXPECT_EQ(result.errors.front().lineNumber, 0U);
+  EXPECT_EQ(result.errors.front().rawContent, path.string());
+  EXPECT_EQ(result.errors.front().message, "unable to open file");
+}
+
+TEST(PlainTextLogParserTest, DetectsSupportedFileExtensions) {
+  const PlainTextLogParser parser;
+
+  EXPECT_TRUE(parser.canParse("application.log"));
+  EXPECT_TRUE(parser.canParse("application.txt"));
+  EXPECT_TRUE(parser.canParse("APPLICATION.LOG"));
+  EXPECT_FALSE(parser.canParse("application.json"));
 }
 
 TEST(PlainTextLogParserTest, RejectsInvalidDateAndTimeValues) {

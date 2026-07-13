@@ -3,6 +3,8 @@ add_executable(
   core_version_test.cpp
   log_entry_test.cpp
   log_level_test.cpp
+  log_parser_interface_test.cpp
+  parse_result_test.cpp
   plain_text_log_parser_test.cpp
 )
 

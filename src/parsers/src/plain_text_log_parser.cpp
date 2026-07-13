@@ -5,6 +5,8 @@
 #include <cctype>
 #include <chrono>
 #include <cstddef>
+#include <filesystem>
+#include <fstream>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -172,6 +174,27 @@ using LineParseResult = std::variant<LineParseSuccess, LineParseFailure>;
 
 } // namespace
 
+bool PlainTextLogParser::canParse(const std::filesystem::path& path) const {
+  const auto extension = path.extension().string();
+  return ascii_equal_ignore_case(extension, ".log") || ascii_equal_ignore_case(extension, ".txt");
+}
+
+ParseResult PlainTextLogParser::parse(const std::filesystem::path& path) const {
+  std::ifstream file{path};
+  if (!file.is_open()) {
+    return ParseResult{
+        .entries = {},
+        .errors = {ParseError{
+            .lineNumber = 0U,
+            .rawContent = path.string(),
+            .message = "unable to open file",
+        }},
+    };
+  }
+
+  return parse(file, path.filename().string());
+}
+
 ParseResult PlainTextLogParser::parse(std::istream& input, std::string_view source_name) const {
   ParseResult result;
   std::string line;
@@ -188,8 +211,8 @@ ParseResult PlainTextLogParser::parse(std::istream& input, std::string_view sour
 
     const auto* failure = std::get_if<LineParseFailure>(&parsed_line);
     result.errors.push_back(ParseError{
-        .line_number = line_number,
-        .line = line,
+        .lineNumber = line_number,
+        .rawContent = line,
         .message = failure->message,
     });
   }

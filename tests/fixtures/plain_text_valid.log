@@ -1,7 +1,7 @@
-2026-07-12 15:21:04 TRACE Trace details enabled
-2026-07-12 15:21:05 DEBUG Cache lookup started
-2026-07-12 15:21:06 INFO Service started
-2026-07-12 15:21:07 WARNING High memory usage
-2026-07-12 15:21:08 WARN Slow query detected
-2026-07-12 15:21:09 ERROR Database connection failed
-2026-07-12 15:21:10 CRITICAL Disk is full
+2026-07-13 18:42:04 TRACE gateway Trace details enabled
+2026-07-13 18:42:05 DEBUG cache Cache lookup started
+2026-07-13 18:42:06 INFO api Service started
+2026-07-13 18:42:07 WARNING worker High memory usage
+2026-07-13 18:42:08 WARN database Slow query detected
+2026-07-13 18:42:09 ERROR payment-service Database connection failed
+2026-07-13 18:42:10 CRITICAL storage Disk is full

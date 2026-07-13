@@ -4,15 +4,16 @@
 
 #include <filesystem>
 #include <istream>
-#include <string_view>
 
 namespace loginsight::parsers {
 
+// Plain text lines use: YYYY-MM-DD HH:MM:SS LEVEL SOURCE MESSAGE.
+// UNKNOWN is reported as an unsupported level instead of becoming LogLevel::unknown.
 class PlainTextLogParser final : public ILogParser {
 public:
   [[nodiscard]] bool canParse(const std::filesystem::path& path) const override;
   [[nodiscard]] ParseResult parse(const std::filesystem::path& path) const override;
-  [[nodiscard]] ParseResult parse(std::istream& input, std::string_view source_name = {}) const;
+  [[nodiscard]] ParseResult parse(std::istream& input) const;
 };
 
 } // namespace loginsight::parsers

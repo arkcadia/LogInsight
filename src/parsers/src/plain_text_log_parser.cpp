@@ -1,9 +1,9 @@
 #include "loginsight/parsers/plain_text_log_parser.hpp"
 
 #include "loginsight/core/log_level.hpp"
+#include "loginsight/parsers/timestamp_parser.hpp"
 
 #include <cctype>
-#include <chrono>
 #include <cstddef>
 #include <filesystem>
 #include <fstream>
@@ -18,7 +18,6 @@ namespace {
 constexpr std::size_t date_size = 10;
 constexpr std::size_t time_size = 8;
 constexpr std::size_t timestamp_size = date_size + 1 + time_size;
-constexpr std::size_t level_offset = timestamp_size + 1;
 
 struct LineParseSuccess {
   core::LogEntry entry;
@@ -46,60 +45,6 @@ using LineParseResult = std::variant<LineParseSuccess, LineParseFailure>;
   return true;
 }
 
-[[nodiscard]] bool is_digit(char value) noexcept { return value >= '0' && value <= '9'; }
-
-[[nodiscard]] std::optional<int> parse_fixed_int(std::string_view value, std::size_t offset,
-                                                 std::size_t count) {
-  if (offset + count > value.size()) {
-    return std::nullopt;
-  }
-
-  int result = 0;
-  for (std::size_t index = offset; index < offset + count; ++index) {
-    if (!is_digit(value[index])) {
-      return std::nullopt;
-    }
-
-    result = (result * 10) + static_cast<int>(value[index] - '0');
-  }
-
-  return result;
-}
-
-[[nodiscard]] std::optional<core::LogTimestamp> parse_timestamp(std::string_view value) {
-  if (value.size() != timestamp_size || value[4] != '-' || value[7] != '-' ||
-      value[date_size] != ' ' || value[13] != ':' || value[16] != ':') {
-    return std::nullopt;
-  }
-
-  const auto year_value = parse_fixed_int(value, 0, 4);
-  const auto month_value = parse_fixed_int(value, 5, 2);
-  const auto day_value = parse_fixed_int(value, 8, 2);
-  const auto hour_value = parse_fixed_int(value, 11, 2);
-  const auto minute_value = parse_fixed_int(value, 14, 2);
-  const auto second_value = parse_fixed_int(value, 17, 2);
-
-  if (!year_value.has_value() || !month_value.has_value() || !day_value.has_value() ||
-      !hour_value.has_value() || !minute_value.has_value() || !second_value.has_value()) {
-    return std::nullopt;
-  }
-
-  if (*hour_value > 23 || *minute_value > 59 || *second_value > 59) {
-    return std::nullopt;
-  }
-
-  const auto date = std::chrono::year{*year_value} /
-                    std::chrono::month{static_cast<unsigned>(*month_value)} /
-                    std::chrono::day{static_cast<unsigned>(*day_value)};
-  if (!date.ok()) {
-    return std::nullopt;
-  }
-
-  const auto timestamp = std::chrono::sys_days{date} + std::chrono::hours{*hour_value} +
-                         std::chrono::minutes{*minute_value} + std::chrono::seconds{*second_value};
-  return std::chrono::time_point_cast<core::LogTimestamp::duration>(timestamp);
-}
-
 [[nodiscard]] std::optional<core::LogLevel> parse_plain_text_level(std::string_view value) {
   if (ascii_equal_ignore_case(value, "TRACE")) {
     return core::LogLevel::trace;
@@ -123,7 +68,7 @@ using LineParseResult = std::variant<LineParseSuccess, LineParseFailure>;
   return std::nullopt;
 }
 
-[[nodiscard]] bool has_non_space(std::string_view value) {
+[[nodiscard]] bool has_non_space(std::string_view value) noexcept {
   for (const auto character : value) {
     if (character != ' ') {
       return true;
@@ -133,9 +78,36 @@ using LineParseResult = std::variant<LineParseSuccess, LineParseFailure>;
   return false;
 }
 
-[[nodiscard]] LineParseResult parse_line(std::string_view line, std::string_view source_name) {
-  if (line.size() <= level_offset) {
-    return LineParseFailure{"line is too short for the expected plain text format"};
+[[nodiscard]] std::size_t skip_spaces(std::string_view value, std::size_t offset) noexcept {
+  while (offset < value.size() && value[offset] == ' ') {
+    ++offset;
+  }
+
+  return offset;
+}
+
+struct Token {
+  std::string_view value;
+  std::size_t next_offset{};
+};
+
+[[nodiscard]] std::optional<Token> read_token(std::string_view line, std::size_t offset) noexcept {
+  offset = skip_spaces(line, offset);
+  if (offset >= line.size()) {
+    return std::nullopt;
+  }
+
+  const auto token_end = line.find(' ', offset);
+  if (token_end == std::string_view::npos) {
+    return Token{.value = line.substr(offset), .next_offset = line.size()};
+  }
+
+  return Token{.value = line.substr(offset, token_end - offset), .next_offset = token_end};
+}
+
+[[nodiscard]] LineParseResult parse_line(std::string_view line) {
+  if (line.size() < timestamp_size) {
+    return LineParseFailure{"invalid timestamp"};
   }
 
   const auto timestamp = parse_timestamp(line.substr(0, timestamp_size));
@@ -143,21 +115,32 @@ using LineParseResult = std::variant<LineParseSuccess, LineParseFailure>;
     return LineParseFailure{"invalid timestamp"};
   }
 
-  if (line[timestamp_size] != ' ') {
+  auto offset = timestamp_size;
+  if (offset < line.size() && line[offset] != ' ') {
     return LineParseFailure{"missing separator after timestamp"};
   }
 
-  const auto level_end = line.find(' ', level_offset);
-  if (level_end == std::string_view::npos) {
-    return LineParseFailure{"missing message"};
+  const auto level_token = read_token(line, offset);
+  if (!level_token.has_value()) {
+    return LineParseFailure{"missing level"};
   }
 
-  const auto level = parse_plain_text_level(line.substr(level_offset, level_end - level_offset));
+  const auto level = parse_plain_text_level(level_token->value);
   if (!level.has_value()) {
     return LineParseFailure{"unsupported log level"};
   }
 
-  const auto message = line.substr(level_end + 1);
+  const auto source_token = read_token(line, level_token->next_offset);
+  if (!source_token.has_value()) {
+    return LineParseFailure{"missing source"};
+  }
+
+  offset = skip_spaces(line, source_token->next_offset);
+  if (offset >= line.size()) {
+    return LineParseFailure{"missing message"};
+  }
+
+  const auto message = line.substr(offset);
   if (message.empty() || !has_non_space(message)) {
     return LineParseFailure{"missing message"};
   }
@@ -165,7 +148,7 @@ using LineParseResult = std::variant<LineParseSuccess, LineParseFailure>;
   return LineParseSuccess{core::LogEntry{
       .timestamp = *timestamp,
       .level = *level,
-      .source = core::LogSource{.name = std::string{source_name}},
+      .source = core::LogSource{.name = std::string{source_token->value}},
       .message = std::string{message},
       .rawContent = std::string{line},
       .attributes = {},
@@ -192,10 +175,10 @@ ParseResult PlainTextLogParser::parse(const std::filesystem::path& path) const {
     };
   }
 
-  return parse(file, path.filename().string());
+  return parse(file);
 }
 
-ParseResult PlainTextLogParser::parse(std::istream& input, std::string_view source_name) const {
+ParseResult PlainTextLogParser::parse(std::istream& input) const {
   ParseResult result;
   std::string line;
   std::size_t line_number = 0;
@@ -203,7 +186,11 @@ ParseResult PlainTextLogParser::parse(std::istream& input, std::string_view sour
   while (std::getline(input, line)) {
     ++line_number;
 
-    const auto parsed_line = parse_line(line, source_name);
+    if (!has_non_space(line)) {
+      continue;
+    }
+
+    const auto parsed_line = parse_line(line);
     if (const auto* success = std::get_if<LineParseSuccess>(&parsed_line)) {
       result.entries.push_back(success->entry);
       continue;

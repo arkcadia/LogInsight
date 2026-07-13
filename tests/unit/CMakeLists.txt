@@ -6,6 +6,7 @@ add_executable(
   log_parser_interface_test.cpp
   parse_result_test.cpp
   plain_text_log_parser_test.cpp
+  timestamp_parser_test.cpp
 )
 
 target_compile_definitions(

@@ -1,9 +1,9 @@
 # LogInsight
 
-LogInsight is a C++20 desktop application for parsing, normalizing, and inspecting log data. This
-first release focuses on the foundation: a normalized log domain model, a reusable parser interface,
-a plain-text parser, timestamp parsing utilities, fixture-backed tests, and a minimal Qt 6 desktop
-shell.
+LogInsight is a C++20 command-line application for parsing, normalizing, and inspecting log data.
+This first release focuses on the foundation: a normalized log domain model, a reusable parser
+interface, a plain-text parser, timestamp parsing utilities, fixture-backed tests, and an analysis
+command.
 
 The codebase is organized around small modules under [`src/`](src/). Parser behavior is covered by
 readable fixtures under [`tests/fixtures/`](tests/fixtures/), and the current plain-text parser
@@ -45,19 +45,14 @@ Example:
   Parser tests copy [`tests/fixtures/`](tests/fixtures/) into the build tree, then load files by
   stable relative paths. This avoids hardcoded absolute paths and keeps test data easy to inspect.
 
-- **Qt-free parser and domain layers**  
-  The core and parser modules do not depend on Qt. Qt is isolated to the application shell under
-  [`src/app/`](src/app/).
-
-- **No browser runtime**  
-  This release does not use browser APIs such as the
-  [Intersection Observer API](https://developer.mozilla.org/en-US/docs/Web/API/Intersection_Observer_API),
-  CSS scrolling APIs, or web fonts. The UI target is native Qt Widgets, not a DOM-based frontend.
+- **Separated analysis and presentation**
+  [`AnalysisSummary`](src/parsers/include/loginsight/parsers/analysis_summary.hpp) calculates log
+  statistics independently from the CLI formatter in [`src/app/`](src/app/). This keeps the same
+  summary usable by future presentation layers.
 
 ## Technologies And Libraries
 
 - [CMake](https://cmake.org/) for the build system.
-- [Qt 6 Widgets](https://doc.qt.io/qt-6/qtwidgets-index.html) for the desktop GUI shell.
 - [GoogleTest](https://google.github.io/googletest/) for unit and integration tests.
 - [nlohmann/json](https://json.nlohmann.me/) is configured for future structured log and settings
   work.
@@ -67,6 +62,29 @@ Example:
   `std::filesystem`, and value-oriented containers.
 
 No specific fonts are used in this release.
+
+## Build And Test
+
+On Ubuntu, install the development packages used by the current CMake targets:
+
+```sh
+sudo apt-get update
+sudo apt-get install --yes --no-install-recommends \
+  libspdlog-dev \
+  libsqlite3-dev \
+  nlohmann-json3-dev
+```
+
+Then run the same configure, build, and test commands as CI:
+
+```sh
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+cmake --build build --parallel
+ctest --test-dir build --output-on-failure
+```
+
+GoogleTest is fetched by the existing CMake configuration when it is not installed locally. Strict
+compiler warnings are enabled by the project CMake targets.
 
 ## Project Structure
 
@@ -103,7 +121,7 @@ No specific fonts are used in this release.
 
 [`src/core/`](src/core/) contains the normalized domain model and shared application metadata.
 [`src/parsers/`](src/parsers/) contains parser contracts, parse result models, timestamp parsing,
-and the plain-text parser. [`src/app/`](src/app/) contains the minimal Qt 6 executable.
+and the plain-text parser. [`src/app/`](src/app/) contains the CLI executable and text formatting.
 [`docs/`](docs/) records format and domain decisions. [`tests/fixtures/`](tests/fixtures/) contains
 small log samples used by parser tests. [`tests/unit/`](tests/unit/) and
 [`tests/integration/`](tests/integration/) separate fast unit coverage from broader module smoke
@@ -119,7 +137,7 @@ This first release establishes the project foundation:
 - Plain-text parser for timestamp, level, source, and message fields
 - Timestamp parsing utility for space-separated, ISO-style, and UTC-suffixed timestamps
 - Fixture-backed GoogleTest coverage
-- Minimal Qt 6 GUI executable
+- CLI analysis command with reusable summaries and text formatting
 - Modular CMake targets with strict compiler warnings
 
 Storage, alerting, rule evaluation, and richer GUI workflows are present as module boundaries but

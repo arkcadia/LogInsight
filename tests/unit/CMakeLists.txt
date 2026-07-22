@@ -1,9 +1,13 @@
 add_executable(
   loginsight_unit_tests
+  analysis_summary_formatter_test.cpp
+  analysis_summary_test.cpp
   core_version_test.cpp
+  file_import_service_test.cpp
   log_entry_test.cpp
   log_level_test.cpp
   log_parser_interface_test.cpp
+  parser_registry_test.cpp
   parse_result_test.cpp
   plain_text_log_parser_test.cpp
   timestamp_parser_test.cpp
@@ -26,7 +30,7 @@ target_compile_definitions(
 
 target_link_libraries(
   loginsight_unit_tests
-  PRIVATE LogInsight::core LogInsight::parsers GTest::gtest_main
+  PRIVATE LogInsight::app_cli LogInsight::core LogInsight::parsers GTest::gtest_main
 )
 
 loginsight_enable_warnings(loginsight_unit_tests)

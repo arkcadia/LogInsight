@@ -21,7 +21,6 @@ include(cmake/CompilerWarnings.cmake)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
 find_package(SQLite3 REQUIRED)
-find_package(Qt6 REQUIRED COMPONENTS Widgets)
 
 add_subdirectory(src/core)
 add_subdirectory(src/parsers)

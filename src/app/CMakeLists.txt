@@ -14,6 +14,7 @@ target_include_directories(
 target_link_libraries(loginsight_app_cli PUBLIC LogInsight::parsers)
 
 loginsight_enable_warnings(loginsight_app_cli)
+loginsight_enable_sanitizers(loginsight_app_cli)
 
 add_executable(loginsight_app main.cpp)
 
@@ -25,3 +26,4 @@ target_link_libraries(
 set_target_properties(loginsight_app PROPERTIES OUTPUT_NAME loginsight)
 
 loginsight_enable_warnings(loginsight_app)
+loginsight_enable_sanitizers(loginsight_app)

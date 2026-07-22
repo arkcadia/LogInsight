@@ -9,6 +9,11 @@ project(
 
 option(LOGINSIGHT_BUILD_TESTS "Build LogInsight tests" ON)
 option(LOGINSIGHT_FETCH_GTEST "Download GoogleTest if it is not found locally" ON)
+option(
+  LOGINSIGHT_ENABLE_SANITIZERS
+  "Enable AddressSanitizer and UndefinedBehaviorSanitizer for LogInsight targets"
+  OFF
+)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -17,6 +22,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 include(cmake/CompilerWarnings.cmake)
+include(cmake/Sanitizers.cmake)
 
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)

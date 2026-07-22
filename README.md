@@ -86,6 +86,18 @@ ctest --test-dir build --output-on-failure
 GoogleTest is fetched by the existing CMake configuration when it is not installed locally. Strict
 compiler warnings are enabled by the project CMake targets.
 
+To build and run the tests with AddressSanitizer and UndefinedBehaviorSanitizer using GCC or Clang:
+
+```sh
+cmake -S . -B cmake-build-sanitizers \
+  -DCMAKE_BUILD_TYPE=Debug \
+  -DLOGINSIGHT_ENABLE_SANITIZERS=ON
+cmake --build cmake-build-sanitizers --parallel
+ctest --test-dir cmake-build-sanitizers --output-on-failure
+```
+
+Sanitizers are disabled by default, so normal release and development builds are unchanged.
+
 ## Project Structure
 
 ```text

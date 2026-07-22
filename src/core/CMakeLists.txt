@@ -10,3 +10,4 @@ target_include_directories(
 target_link_libraries(loginsight_core PUBLIC nlohmann_json::nlohmann_json spdlog::spdlog)
 
 loginsight_enable_warnings(loginsight_core)
+loginsight_enable_sanitizers(loginsight_core)

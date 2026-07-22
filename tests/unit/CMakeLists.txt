@@ -34,6 +34,7 @@ target_link_libraries(
 )
 
 loginsight_enable_warnings(loginsight_unit_tests)
+loginsight_enable_sanitizers(loginsight_unit_tests)
 
 include(GoogleTest)
 gtest_discover_tests(loginsight_unit_tests WORKING_DIRECTORY ${CMAKE_BINARY_DIR})

@@ -18,3 +18,4 @@ target_include_directories(
 target_link_libraries(loginsight_parsers PUBLIC LogInsight::core)
 
 loginsight_enable_warnings(loginsight_parsers)
+loginsight_enable_sanitizers(loginsight_parsers)

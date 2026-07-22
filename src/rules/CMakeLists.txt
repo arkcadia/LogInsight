@@ -10,3 +10,4 @@ target_include_directories(
 target_link_libraries(loginsight_rules PUBLIC LogInsight::core)
 
 loginsight_enable_warnings(loginsight_rules)
+loginsight_enable_sanitizers(loginsight_rules)

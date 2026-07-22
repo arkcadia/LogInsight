@@ -10,3 +10,4 @@ target_include_directories(
 target_link_libraries(loginsight_storage PUBLIC LogInsight::core SQLite::SQLite3)
 
 loginsight_enable_warnings(loginsight_storage)
+loginsight_enable_sanitizers(loginsight_storage)

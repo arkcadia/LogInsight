@@ -4,6 +4,7 @@ add_executable(
   analysis_summary_test.cpp
   core_version_test.cpp
   file_import_service_test.cpp
+  json_parser_config_test.cpp
   log_entry_test.cpp
   log_level_test.cpp
   log_parser_interface_test.cpp

@@ -3,6 +3,7 @@ add_library(
   STATIC src/analysis_summary.cpp
          src/parser_module.cpp
          src/file_import_service.cpp
+         src/json_parser_config.cpp
          src/parser_registry.cpp
          src/plain_text_log_parser.cpp
          src/timestamp_parser.cpp

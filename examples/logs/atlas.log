@@ -1,0 +1,16 @@
+2026-10-20 09:00:00 INFO gateway Atlas demo session started
+2026-10-20 09:00:01 DEBUG gateway Route table loaded: routes=12
+2026-10-20 09:00:02 INFO catalog Cache warmed: items=240
+2026-10-20 09:00:04 TRACE worker Batch heartbeat received
+2026-10-20 09:00:08 INFO gateway GET /catalog completed status=200
+2026-10-20 09:00:12 WARNING catalog Cache hit ratio below target: ratio=0.62
+2026-10-20 09:00:15 ERROR worker Synthetic database connection failed; retry scheduled
+2026-10-20 09:00:18 INFO worker Database connection restored after retry
+2026-10-20 09:00:22 WARNING gateway Request latency above budget: duration_ms=820
+2026-10-20 09:00:25 ERROR catalog Upstream inventory request timed out
+2026-10-20 09:00:29 CRITICAL worker Synthetic queue capacity exhausted; intake paused
+2026-10-20 09:00:35 INFO worker Backlog drained; intake resumed
+2026-10-20 09:00:40 INFO gateway Atlas demo session completed
+not a structured log record
+2026-02-30 09:00:41 ERROR catalog Invalid calendar date demonstration
+2026-10-20 09:00:42 INFO gateway

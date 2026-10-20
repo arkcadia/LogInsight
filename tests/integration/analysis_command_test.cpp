@@ -140,3 +140,47 @@ TEST(AnalysisCommandTest, ReportsMalformedLinesWithoutFailingTheAnalysis) {
                                "Info: 1\nWarning: 0\nError: 1\nCritical: 0\nUnknown: 0\n";
   EXPECT_EQ(result.standardOutput, expected_output);
 }
+
+TEST(AnalysisCommandTest, ExplainsHelpAndRejectsInvalidOptions) {
+  ParserRegistry registry;
+  register_plain_text_parser(registry);
+  const FileImportService service{registry};
+  const std::array<std::string_view, 2> help{"loginsight", "--help"};
+  const auto result = run_command(help, service);
+  EXPECT_EQ(result.exitCode, 0);
+  EXPECT_TRUE(result.standardError.empty());
+  EXPECT_NE(result.standardOutput.find("--json"), std::string::npos);
+  const std::array<std::string_view, 4> invalid{"loginsight", "analyse", "file.log", "--bad"};
+  EXPECT_EQ(run_command(invalid, service).exitCode, 64);
+}
+
+TEST(AnalysisCommandTest, ExportsReportAndReportsDestinationFailures) {
+  ParserRegistry registry;
+  register_plain_text_parser(registry);
+  const FileImportService service{registry};
+  const auto input = fixture_path("plain_text_mixed.log").string();
+  const std::string destination = "cli-report-test.json";
+  std::error_code ignored;
+  std::filesystem::remove(destination, ignored);
+  const std::array<std::string_view, 5> arguments{"loginsight", "analyse", input, "--json",
+                                                  destination};
+  const auto result = run_command(arguments, service);
+  EXPECT_EQ(result.exitCode, 0);
+  EXPECT_TRUE(std::filesystem::is_regular_file(destination));
+  const auto repeat = run_command(arguments, service);
+  EXPECT_EQ(repeat.exitCode, 74);
+  EXPECT_NE(repeat.standardError.find("already exists"), std::string::npos);
+  std::filesystem::remove(destination);
+}
+
+TEST(AnalysisCommandTest, ReportsOutputStreamFailure) {
+  ParserRegistry registry;
+  register_plain_text_parser(registry);
+  const FileImportService service{registry};
+  const auto input = fixture_path("plain_text_valid.log").string();
+  const std::array<std::string_view, 3> arguments{"loginsight", "analyse", input};
+  std::ostringstream broken, errors;
+  broken.setstate(std::ios::badbit);
+  EXPECT_EQ(run_cli(arguments, service, broken, errors), 74);
+  EXPECT_NE(errors.str().find("unable to write command output"), std::string::npos);
+}

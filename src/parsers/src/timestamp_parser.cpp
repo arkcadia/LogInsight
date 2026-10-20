@@ -80,7 +80,13 @@ parse_timestamp(std::string_view value) noexcept {
 
   const auto timestamp = std::chrono::sys_days{date} + std::chrono::hours{*hour_value} +
                          std::chrono::minutes{*minute_value} + std::chrono::seconds{*second_value};
-  return std::chrono::time_point_cast<std::chrono::system_clock::duration>(timestamp);
+  // Converting seconds outside system_clock's range (often nanoseconds) overflows.
+  using Clock = std::chrono::system_clock;
+  if (timestamp < std::chrono::ceil<std::chrono::seconds>(Clock::time_point::min()) ||
+      timestamp > std::chrono::floor<std::chrono::seconds>(Clock::time_point::max())) {
+    return std::nullopt;
+  }
+  return std::chrono::time_point_cast<Clock::duration>(timestamp);
 }
 
 } // namespace loginsight::parsers

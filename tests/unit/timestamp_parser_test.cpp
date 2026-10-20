@@ -72,3 +72,13 @@ TEST(TimestampParserTest, RejectsUnsupportedSeparatorsAndTimezoneMarkers) {
   EXPECT_EQ(parse_timestamp("2026-07-12_15:21:04"), std::nullopt);
   EXPECT_EQ(parse_timestamp("2026-07-12T15:21:04z"), std::nullopt);
 }
+
+TEST(TimestampParserTest, RejectsDatesOutsideSystemClockRangeWithoutOverflow) {
+  // Linux system_clock stores nanoseconds in a signed 64-bit value.
+  if constexpr (std::chrono::system_clock::period::den >= 1000000000) {
+    EXPECT_EQ(parse_timestamp("9999-12-31T23:59:59"), std::nullopt);
+    EXPECT_EQ(parse_timestamp("0001-01-01T00:00:00"), std::nullopt);
+  }
+  EXPECT_TRUE(parse_timestamp("2000-02-29T00:00:00").has_value());
+  EXPECT_EQ(parse_timestamp("1900-02-29T00:00:00"), std::nullopt);
+}

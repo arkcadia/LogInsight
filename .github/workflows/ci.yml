@@ -10,24 +10,40 @@ permissions:
 jobs:
   build-and-test:
     runs-on: ubuntu-24.04
-
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: headless
+            gui: 'OFF'
+            sanitizers: 'OFF'
+          - name: desktop
+            gui: 'ON'
+            sanitizers: 'OFF'
+          - name: sanitizers
+            gui: 'ON'
+            sanitizers: 'ON'
+    name: ${{ matrix.name }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
-
-      - name: Install build dependencies
+      - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends \
-            libspdlog-dev \
-            libsqlite3-dev \
-            nlohmann-json3-dev
-
+            nlohmann-json3-dev libgtest-dev
+          if [ "${{ matrix.gui }}" = "ON" ]; then
+            sudo apt-get install --yes --no-install-recommends qt6-base-dev
+          fi
       - name: Configure
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
-
+        run: >-
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+          -DLOGINSIGHT_FETCH_GTEST=OFF
+          -DLOGINSIGHT_BUILD_GUI=${{ matrix.gui }}
+          -DLOGINSIGHT_ENABLE_SANITIZERS=${{ matrix.sanitizers }}
       - name: Build
-        run: cmake --build build --parallel
-
+        run: cmake --build build --parallel 4
       - name: Test
         run: ctest --test-dir build --output-on-failure
+      - name: Sample analysis
+        run: ./build/src/app/loginsight analyse examples/logs/atlas.log --json sample-report.json

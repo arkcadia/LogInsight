@@ -1,89 +1,80 @@
 #include "loginsight/app/analysis_command.hpp"
-
+#include "loginsight/app/analysis_service.hpp"
 #include "loginsight/app/analysis_summary_formatter.hpp"
 
-#include <algorithm>
-#include <filesystem>
+#include <array>
+#include <exception>
 #include <ostream>
+#include <stdexcept>
 #include <string>
-#include <system_error>
 
 namespace loginsight::app {
 namespace {
-
-constexpr std::string_view analyse_command = "analyse";
 constexpr std::string_view usage = "Usage: loginsight analyse <file-path>\n";
-
-[[nodiscard]] int exit_code(CommandExitCode code) noexcept { return static_cast<int>(code); }
-
-[[nodiscard]] bool has_file_opening_failure(const parsers::ParseResult& result) {
-  return std::any_of(result.errors.cbegin(), result.errors.cend(),
-                     [](const parsers::ParseError& error) { return error.lineNumber == 0U; });
+int code(CommandExitCode value) { return static_cast<int>(value); }
+int usage_error(std::ostream& out, std::string_view message) {
+  out << "Error: " << message << '\n' << usage;
+  return code(CommandExitCode::invalid_arguments);
 }
-
-void print_usage_error(std::ostream& error_output, std::string_view message) {
-  error_output << "Error: " << message << '\n' << usage;
-}
-
 } // namespace
 
 int run_cli(std::span<const std::string_view> arguments,
             const parsers::FileImportService& import_service, std::ostream& output,
             std::ostream& error_output) {
-  if (arguments.size() < 2U) {
-    print_usage_error(error_output, "missing command.");
-    return exit_code(CommandExitCode::invalid_arguments);
+  if ((arguments.size() == 2U && (arguments[1] == "--help" || arguments[1] == "-h")) ||
+      (arguments.size() == 3U && arguments[1] == "analyse" && arguments[2] == "--help")) {
+    output << "LogInsight — plain-text log analysis\n\n"
+           << usage << "       loginsight analyse <file-path> --json <report-path>\n\n"
+           << "Supported: .log and .txt, one record per line:\n"
+           << "YYYY-MM-DD HH:MM:SS LEVEL SOURCE MESSAGE\n\n"
+           << "Malformed records are counted; valid records remain available.\n"
+           << "JSON export includes entries and malformed records; destination must not exist.\n"
+           << "Example: loginsight analyse examples/logs/atlas.log --json report.json\n"
+           << "Exit codes: 0 success (including malformed records), 64 arguments,\n"
+           << "65 unsupported format, 66 missing file, 74 I/O, 78 configuration.\n";
+    output.flush();
+    return code(output ? CommandExitCode::success : CommandExitCode::file_open_failure);
   }
-
-  if (arguments[1] != analyse_command) {
-    print_usage_error(error_output, "unsupported command: " + std::string{arguments[1]});
-    return exit_code(CommandExitCode::invalid_arguments);
+  if (arguments.size() < 2U)
+    return usage_error(error_output, "missing command.");
+  if (arguments[1] != "analyse") {
+    return usage_error(error_output, "unsupported command: " + std::string{arguments[1]});
   }
-
   if (arguments.size() < 3U || arguments[2].empty()) {
-    print_usage_error(error_output, "missing file path.");
-    return exit_code(CommandExitCode::invalid_arguments);
+    return usage_error(error_output, "missing file path.");
   }
-
-  if (arguments.size() > 3U) {
-    print_usage_error(error_output, "expected exactly one file path.");
-    return exit_code(CommandExitCode::invalid_arguments);
+  const bool export_json =
+      arguments.size() == 5U && arguments[3] == "--json" && !arguments[4].empty();
+  if (arguments.size() != 3U && !export_json) {
+    return usage_error(error_output, "expected a file path and optional --json <report-path>.");
   }
-
-  const std::filesystem::path path{std::string{arguments[2]}};
-  std::error_code status_error;
-  const auto file_status = std::filesystem::status(path, status_error);
-  if (status_error == std::errc::no_such_file_or_directory) {
-    error_output << "Error: file not found: " << path.string() << '\n';
-    return exit_code(CommandExitCode::file_not_found);
+  try {
+    auto result = analyze_file(std::filesystem::path{arguments[2]}, import_service);
+    if (!result.completed()) {
+      auto exit = CommandExitCode::file_open_failure;
+      auto diagnostic = result.diagnostic;
+      if (result.status == AnalysisStatus::unsupported_format)
+        exit = CommandExitCode::unsupported_format;
+      if (result.status == AnalysisStatus::file_not_found)
+        exit = CommandExitCode::file_not_found;
+      if (result.status == AnalysisStatus::io_failure)
+        diagnostic = "unable to open file";
+      error_output << "Error: " << diagnostic << ": " << result.path.string() << '\n';
+      return code(exit);
+    }
+    output << format_analysis_summary(result.path, result.summary);
+    if (export_json) {
+      const std::array<AnalysisResult, 1> results{std::move(result)};
+      save_json_report(std::filesystem::path{arguments[4]}, results);
+      output << "Report: " << arguments[4] << '\n';
+    }
+    output.flush();
+    if (!output)
+      throw std::runtime_error("unable to write command output");
+    return code(CommandExitCode::success);
+  } catch (const std::exception& error) {
+    error_output << "Error: " << error.what() << '\n';
+    return code(CommandExitCode::file_open_failure);
   }
-
-  if (!status_error && !std::filesystem::exists(file_status)) {
-    error_output << "Error: file not found: " << path.string() << '\n';
-    return exit_code(CommandExitCode::file_not_found);
-  }
-
-  if (status_error || !std::filesystem::is_regular_file(file_status)) {
-    error_output << "Error: unable to open file: " << path.string() << '\n';
-    return exit_code(CommandExitCode::file_open_failure);
-  }
-
-  const auto import_result = import_service.importFile(path);
-  if (!import_result.isSupported()) {
-    error_output << "Error: unsupported file format: " << path.string() << '\n';
-    return exit_code(CommandExitCode::unsupported_format);
-  }
-
-  if (has_file_opening_failure(import_result.parseResult)) {
-    error_output << "Error: unable to open file: " << path.string() << '\n';
-    return exit_code(CommandExitCode::file_open_failure);
-  }
-
-  const auto summary = parsers::build_analysis_summary(import_result.parseResult);
-
-  output << format_analysis_summary(path, summary);
-
-  return exit_code(CommandExitCode::success);
 }
-
 } // namespace loginsight::app

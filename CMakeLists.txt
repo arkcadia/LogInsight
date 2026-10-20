@@ -7,6 +7,8 @@ project(
   LANGUAGES CXX
 )
 
+option(LOGINSIGHT_BUILD_GUI "Build the Qt 6 desktop application" OFF)
+
 option(LOGINSIGHT_BUILD_TESTS "Build LogInsight tests" ON)
 option(LOGINSIGHT_FETCH_GTEST "Download GoogleTest if it is not found locally" ON)
 option(
@@ -15,8 +17,6 @@ option(
   OFF
 )
 
-set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -25,8 +25,6 @@ include(cmake/CompilerWarnings.cmake)
 include(cmake/Sanitizers.cmake)
 
 find_package(nlohmann_json CONFIG REQUIRED)
-find_package(spdlog CONFIG REQUIRED)
-find_package(SQLite3 REQUIRED)
 
 add_subdirectory(src/core)
 add_subdirectory(src/parsers)
@@ -34,6 +32,10 @@ add_subdirectory(src/rules)
 add_subdirectory(src/alerts)
 add_subdirectory(src/storage)
 add_subdirectory(src/app)
+if(LOGINSIGHT_BUILD_GUI)
+  find_package(Qt6 6.4 REQUIRED COMPONENTS Widgets Concurrent)
+  add_subdirectory(src/gui)
+endif()
 
 if(LOGINSIGHT_BUILD_TESTS)
   enable_testing()
@@ -66,4 +68,8 @@ if(LOGINSIGHT_BUILD_TESTS)
 
   add_subdirectory(tests/unit)
   add_subdirectory(tests/integration)
+  if(LOGINSIGHT_BUILD_GUI)
+    find_package(Qt6 REQUIRED COMPONENTS Test)
+    add_subdirectory(tests/gui)
+  endif()
 endif()

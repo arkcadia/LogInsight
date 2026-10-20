@@ -2,6 +2,7 @@ add_executable(
   loginsight_unit_tests
   analysis_summary_formatter_test.cpp
   analysis_summary_test.cpp
+  analysis_service_test.cpp
   core_version_test.cpp
   file_import_service_test.cpp
   json_parser_config_test.cpp
@@ -31,7 +32,7 @@ target_compile_definitions(
 
 target_link_libraries(
   loginsight_unit_tests
-  PRIVATE LogInsight::app_cli LogInsight::core LogInsight::parsers GTest::gtest_main
+  PRIVATE LogInsight::app_cli LogInsight::core LogInsight::parsers GTest::gtest_main nlohmann_json::nlohmann_json
 )
 
 loginsight_enable_warnings(loginsight_unit_tests)

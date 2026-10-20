@@ -10,6 +10,10 @@
 #include <utility>
 
 #include <gtest/gtest.h>
+#include <type_traits>
+
+static_assert(!std::is_constructible_v<loginsight::parsers::FileImportService,
+                                       loginsight::parsers::ParserRegistry&&>);
 
 using loginsight::parsers::FileImportService;
 using loginsight::parsers::FileImportStatus;

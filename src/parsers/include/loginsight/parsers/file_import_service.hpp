@@ -24,6 +24,7 @@ struct FileImportResult {
 class FileImportService {
 public:
   explicit FileImportService(const ParserRegistry& registry) noexcept;
+  FileImportService(const ParserRegistry&&) = delete; // Never borrow a temporary registry.
 
   [[nodiscard]] FileImportResult importFile(const std::filesystem::path& path) const;
 

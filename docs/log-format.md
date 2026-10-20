@@ -62,3 +62,19 @@ not match the local platform.
 `LogAttributes` is currently `std::map<std::string, std::string>` to keep ordering deterministic in
 tests, serialization, and UI presentation. Values remain strings until a later feature needs typed
 attributes.
+
+## Current plain-text input and reports
+
+The plain-text parser is implemented for `.log`/`.txt`. Records use
+`YYYY-MM-DD HH:MM:SS LEVEL SOURCE MESSAGE` (space or `T` inside the timestamp;
+spaces/tabs between fields). Zone-free timestamps are interpreted as UTC. LF/CRLF and
+blank lines are supported. Canonical severities plus WARN are accepted; the core's wider
+alias conversion is not the plain-text grammar. No `Z` suffix, fractional seconds or timezone
+offsets are accepted in plain-text records. The standalone timestamp helper also supports
+`Z`, but the record parser intentionally uses a fixed 19-character timestamp.
+
+`rawContent` preserves the input record excluding its LF/CRLF line terminator. Import services
+attach the input path to `source.file_path`. Malformed records retain line number/raw content/reason;
+line zero denotes an I/O failure rather than a malformed record. Application services exclude
+I/O-failed files from valid session counts. JSON schema version 1 exports UTC timestamps with
+`Z`, entries, summary counts and all malformed records; this is an output format, not an input parser.

@@ -10,7 +10,7 @@
 #include <string_view>
 #include <vector>
 
-int main(int argc, char* argv[]) {
+int main(int argc, char* argv[]) try {
   loginsight::parsers::ParserRegistry parser_registry;
   if (!parser_registry.registerParser(
           std::make_unique<loginsight::parsers::PlainTextLogParser>())) {
@@ -27,4 +27,9 @@ int main(int argc, char* argv[]) {
   }
 
   return loginsight::app::run_cli(arguments, import_service, std::cout, std::cerr);
+}
+
+catch (const std::exception& error) {
+  std::cerr << "Error: " << error.what() << '\n';
+  return static_cast<int>(loginsight::app::CommandExitCode::configuration_failure);
 }

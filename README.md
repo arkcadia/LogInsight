@@ -1,514 +1,238 @@
 # LogInsight
 
-LogInsight is a modern C++ log analysis application designed to import heterogeneous log files, normalize their contents, detect suspicious events, and present clear analysis results.
+A C++20 desktop and command-line tool for inspecting structured plain-text logs.
+Import files, compare severity counts, filter individual events, inspect original records,
+and export a JSON report that includes malformed input. Processing stays on your machine.
 
-The project aims to provide a modular and extensible foundation for log parsing, data-quality validation, rule-based detection, statistical anomaly detection, and reporting.
+![LogInsight overview with the bundled synthetic session](docs/images/overview.png)
 
-## Project status
+*Actual Qt application, captured with the bundled dataset using an offscreen display.*
+[View the full log explorer](docs/images/showcase-explorer.png) ·
+[Inspect one service](docs/images/showcase-source-filter.png).
 
-LogInsight is currently under active development.
+## Features
 
-Currently implemented:
+- `.log` and `.txt` ingestion with normalized timestamps, severities, sources and messages.
+- Malformed records reported separately while valid records remain available.
+- Dark Qt 6 interface with severity distribution and import diagnostics.
+- Multi-file sessions, native file selection, drag-and-drop and one-click sample loading.
+- Sortable table, message search, severity/source filters and raw-record details.
+- Background import and export; the current session remains explorable during processing.
+- CLI summaries, documented exit codes and JSON export for automation.
+- Qt-free core and application services, with an optional desktop build.
 
-* C++20 project architecture
-* Normalized log domain model
-* `LogEntry` representation
-* `LogLevel` enumeration
-* Log-level string conversion
-* Unit tests for the domain model
+There is no rule engine or generated alert system in this release. Rules, alerts and storage
+modules are scaffolding; JSON configuration validation exists without a JSON input parser.
 
-Currently being developed:
+## Quick start
 
-* Parser result and error models
-* Plain-text log parser
-* Parser registry
-* File import service
-* Command-line analysis interface
+Requirements: CMake 3.24+, a C++20 compiler with chrono calendar support, nlohmann/json,
+and GoogleTest for tests. The desktop additionally needs Qt 6.4+ Widgets, Concurrent and Test.
 
-Future components:
+On Ubuntu, install dependencies:
 
-* CSV and JSON parsing
-* Configurable detection rules
-* Alert generation
-* SQLite persistence
-* Desktop interface
-* Statistical anomaly detection
-* HTML and JSON reports
-
-## Main objective
-
-The first usable version of LogInsight will support the following workflow:
-
-```text
-Input log file
-      |
-      v
-Format detection
-      |
-      v
-Log parser
-      |
-      v
-Normalized LogEntry objects
-      |
-      v
-Data validation
-      |
-      v
-Rule engine
-      |
-      v
-Alerts and analysis summary
+```sh
+sudo apt-get update
+sudo apt-get install build-essential cmake nlohmann-json3-dev libgtest-dev qt6-base-dev
 ```
 
-The initial milestone is a command-line application capable of reading a plain-text log file, normalizing valid entries, reporting malformed lines, and displaying a severity summary.
+From the repository root:
 
-## Planned features
-
-### Log ingestion
-
-* Plain-text log files
-* CSV files
-* JSON files
-* JSON Lines files
-* Configurable field mappings
-* Multiple files in one analysis session
-
-### Normalization
-
-All supported file formats will be converted into a common internal representation.
-
-Example normalized log entry:
-
-```cpp
-struct LogEntry {
-    std::uint64_t id{};
-    std::chrono::system_clock::time_point timestamp{};
-    LogLevel level{LogLevel::Unknown};
-    std::string source;
-    std::string message;
-    std::string rawContent;
-    std::unordered_map<std::string, std::string> metadata;
-};
-```
-
-This allows the rest of the application to process logs without depending on their original format.
-
-### Data-quality validation
-
-LogInsight will detect issues such as:
-
-* Invalid timestamps
-* Missing fields
-* Unknown severity values
-* Empty messages
-* Corrupted JSON objects
-* Inconsistent CSV columns
-* Duplicate records
-* Unsupported formats
-
-### Rule-based detection
-
-Detection rules will be configurable and independent from the parser implementation.
-
-Example rule:
-
-```json
-{
-  "id": "database-connection-failure",
-  "name": "Database connection failure",
-  "enabled": true,
-  "severity": "high",
-  "conditions": [
-    {
-      "field": "message",
-      "operator": "contains",
-      "value": "database connection failed"
-    },
-    {
-      "field": "level",
-      "operator": "equals",
-      "value": "ERROR"
-    }
-  ]
-}
-```
-
-Planned operators include:
-
-* `equals`
-* `not_equals`
-* `contains`
-* `not_contains`
-* `starts_with`
-* `ends_with`
-* `regex`
-* `greater_than`
-* `less_than`
-* `exists`
-
-### Event correlation
-
-Later versions will support time-window and aggregation rules such as:
-
-* Multiple failed logins within 60 seconds
-* Repeated service restarts
-* Sudden increases in error frequency
-* Failure sequences followed by unavailable services
-* Repeated events grouped by IP address, user, or service
-
-### Statistical analysis
-
-Planned anomaly-detection methods include:
-
-* Moving averages
-* Standard deviation
-* Z-score analysis
-* Frequency spikes
-* Rare event detection
-* New source detection
-* Log-template extraction
-
-The focus will remain on explainable results rather than opaque predictions.
-
-## Technology stack
-
-* C++20
-* CMake
-* GoogleTest
-* `std::chrono`
-* `std::filesystem`
-* nlohmann/json
-* spdlog
-* SQLite
-* Qt 6 for the future desktop interface
-* GitHub Actions for continuous integration
-
-## Project architecture
-
-```text
-loginsight/
-├── CMakeLists.txt
-├── README.md
-├── LICENSE
-├── docs/
-├── include/
-│   └── loginsight/
-│       ├── core/
-│       ├── parsers/
-│       ├── rules/
-│       ├── alerts/
-│       └── storage/
-├── src/
-│   ├── core/
-│   ├── parsers/
-│   ├── rules/
-│   ├── alerts/
-│   ├── storage/
-│   └── app/
-├── tests/
-│   ├── unit/
-│   ├── integration/
-│   └── fixtures/
-├── resources/
-│   ├── rules/
-│   └── sample_logs/
-└── scripts/
-```
-
-The final structure may evolve as new components are implemented.
-
-## Design principles
-
-LogInsight follows several architectural principles:
-
-* Parsers understand input formats.
-* The core application only understands normalized log entries.
-* Parsing errors do not stop the complete import.
-* Domain models remain independent from Qt.
-* Business logic remains independent from the user interface.
-* Storage implementation details remain behind repository interfaces.
-* Each feature is added with unit or integration tests.
-* Ownership and object lifetimes remain explicit.
-* Global mutable state is avoided.
-
-## Building the project
-
-### Requirements
-
-You will need:
-
-* A C++20-compatible compiler
-* CMake
-* Git
-
-Recommended compilers:
-
-* GCC 13 or newer
-* Clang 17 or newer
-
-### Clone the repository
-
-```bash
-git clone https://github.com/YOUR_USERNAME/loginsight.git
-cd loginsight
-```
-
-Replace `YOUR_USERNAME` with the correct GitHub username.
-
-### Configure the project
-
-```bash
-cmake -S . -B build
-```
-
-### Build
-
-```bash
-cmake --build build
-```
-
-### Run the tests
-
-```bash
+```sh
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+  -DLOGINSIGHT_BUILD_GUI=ON -DLOGINSIGHT_FETCH_GTEST=OFF
+cmake --build build --parallel 4
 ctest --test-dir build --output-on-failure
+./build/src/gui/loginsight-gui --sample
 ```
 
-## Planned CLI usage
+The sample is copied next to the executable, so **Load Sample Logs** also works when the
+application starts from another directory. Keep the `samples/` directory alongside it.
+The build tree is runnable; standalone binary packaging is not provided.
 
-The command-line interface is not complete yet.
+For CLI development without Qt:
 
-The planned usage is:
-
-```bash
-./loginsight analyse application.log
+```sh
+cmake -S . -B build-headless -DCMAKE_BUILD_TYPE=Release \
+  -DLOGINSIGHT_BUILD_GUI=OFF -DLOGINSIGHT_FETCH_GTEST=OFF
+cmake --build build-headless --parallel 4
+ctest --test-dir build-headless --output-on-failure
+./build-headless/src/app/loginsight analyse examples/logs/atlas.log
 ```
 
-Expected output:
+`LOGINSIGHT_BUILD_TESTS=OFF` removes the GoogleTest requirement. If GoogleTest is absent,
+`LOGINSIGHT_FETCH_GTEST=ON` permits fetching the pinned v1.15.2 tag. System development
+packages keep normal builds offline after installation. No spdlog or SQLite dependency is needed.
+
+Validated locally on Ubuntu 26.04, GCC 15.2, Qt 6.10.2. CI is configured for Ubuntu 24.04;
+that workflow has not been executed as part of this local session. Windows and macOS have
+not been verified.
+
+## Usage
+
+### Desktop
+
+1. Click **Load Sample Logs**, or **Import Logs** to select one or several files.
+2. Review valid-entry counts, severity distribution and malformed-record diagnostics.
+3. Open **Log Explorer**. Search message text, select a severity/source, or click a column
+   header to sort. Select a row to inspect its message, input path and raw record.
+4. Select **Export JSON** and choose a new destination. Export includes the entire session,
+   regardless of table filters, along with failed-file diagnostics and malformed records.
+
+Each import replaces the current session; selecting multiple files creates one session.
+A batch in which every file fails keeps the prior session. Empty or entirely malformed
+files are valid imports with zero valid entries. Duplicate paths within one selection are
+imported once. Diagnostics show up to 20 malformed-record reasons per file; JSON contains
+all of them. Imports/exports must finish before closing the window; cancellation is future work.
+
+### Command line
+
+```sh
+./build/src/app/loginsight --help
+./build/src/app/loginsight analyse examples/logs/atlas.log
+./build/src/app/loginsight analyse examples/logs/atlas.log --json /tmp/atlas-report.json
+```
+
+Choose an unused report path. Export refuses to overwrite existing files, including input
+logs. It stages the report in the destination directory, then publishes it using an exclusive
+hard link; the destination filesystem must support hard links. A failed write does not leave
+a partially written destination. Output JSON uses schema version 1.
+
+| Exit code | Meaning |
+|---|---|
+| 0 | Completed, possibly with malformed records |
+| 64 | Invalid arguments |
+| 65 | Unsupported format |
+| 66 | Missing input file |
+| 74 | Input/output or report failure |
+| 78 | Application configuration failure |
+
+### Example analysis
+
+Actual output from the bundled fictional three-service session:
 
 ```text
 Analysis complete
 
-File: application.log
-Valid entries: 196
-Malformed lines: 4
+File: examples/logs/atlas.log
+Valid entries: 13
+Malformed lines: 3
 
-Trace: 0
-Debug: 12
-Info: 151
-Warning: 21
-Error: 10
-Critical: 2
+Trace: 1
+Debug: 1
+Info: 6
+Warning: 2
+Error: 2
+Critical: 1
 Unknown: 0
 ```
 
-Additional planned commands:
+These are event severity counts, not detection-rule alerts. The sample includes recovery,
+latency warnings, synthetic service failures and deliberately malformed records.
 
-```bash
-./loginsight analyse logs/
-./loginsight validate-rules rules.json
-./loginsight export --format json --output report.json
-./loginsight export --format html --output report.html
-```
+## Supported formats and limits
 
-## Supported plain-text format
-
-The first parser will support this format:
+One record per line:
 
 ```text
 YYYY-MM-DD HH:MM:SS LEVEL SOURCE MESSAGE
+2026-10-20 09:00:15 ERROR worker Synthetic database connection failed; retry scheduled
 ```
 
-Example:
+- Extensions are case-insensitive `.log` and `.txt`; detection uses the extension.
+- Levels: TRACE, DEBUG, INFO, WARNING/WARN, ERROR, CRITICAL, case-insensitive.
+- Timestamp separators can be a space or `T`; UTC `Z` suffix is not accepted by the
+  plain-text record grammar. Zone-free timestamps are interpreted as UTC.
+- Invalid dates, unsupported levels and missing fields are malformed records.
+- Spaces/tabs separate fields. Empty/whitespace-only lines are ignored; LF and CRLF work.
+- Fractional seconds, timezone offsets, multiline events, CSV, JSON and JSON Lines are unsupported.
+- Timestamps must fit the platform's `system_clock` range (roughly 1677–2262 on the validated system).
+- UTF-8 is expected; desktop display and JSON export replace invalid UTF-8 sequences.
+- Data and raw records stay in memory. The table uses a model/proxy rather than per-row widgets,
+  but filtering/sorting still runs on the UI thread. This is not a streaming or unbounded-data tool.
+  A 30,000-entry import is covered by a responsiveness regression test; no throughput benchmark is claimed.
 
-```text
-2026-07-13 18:42:10 ERROR payment-service Payment processing failed
-2026-07-13 18:42:12 INFO payment-service Retrying payment request
-2026-07-13 18:42:18 WARNING database Connection latency is above threshold
+## Architecture
+
+```mermaid
+flowchart LR
+    Input[Plain-text files] --> Registry[ParserRegistry / FileImportService]
+    Registry --> Parser[PlainTextLogParser]
+    Parser --> Model[Normalized LogEntry + ParseError]
+    Model --> Service[Application analysis service]
+    Service --> Summary[Severity summary]
+    Service --> Report[Streaming JSON report]
+    Service --> CLI[CLI presentation]
+    Service --> Worker[Qt Concurrent worker]
+    Worker --> GUI[Overview / model-view explorer]
 ```
 
-Each valid line will be converted into a normalized `LogEntry`.
+| Layer | Responsibility |
+|---|---|
+| `src/core` | Value-based domain model and severity conversion; standard C++ only |
+| `src/parsers` | Timestamp/record validation, parser registry, import results, summary calculation |
+| `src/app` | Shared analysis/report service, separate CLI library and executable |
+| `src/gui` | Qt presentation, immutable session indexing, asynchronous job coordination |
+| `tests` | GoogleTest unit/integration cases and QtTest model/workflow tests |
 
-Malformed lines will be reported without preventing the rest of the file from being processed.
+### Technology and engineering decisions
 
-## Testing strategy
+- **C++20:** RAII, value semantics, `std::chrono`, `std::filesystem` and explicit result status.
+- **Parser extensibility:** `ILogParser` owns format knowledge; the registry owns parsers with
+  `unique_ptr`. Each import service borrows the registry for a bounded lifetime.
+- **Normalization:** consumers use `LogEntry`, never parser-specific strings. Malformed records
+  carry a line number, raw input and reason. A stream failure is an I/O failure rather than
+  a successful truncated import.
+- **Qt 6 Widgets/Concurrent:** workers construct immutable datasets. Watcher completion updates
+  widgets/models on the UI thread. Export snapshots share the session without copying records.
+  This follows Qt's [worker/watcher model](https://doc.qt.io/qt-6.8/qfuturewatcher.html).
+- **nlohmann/json:** safe JSON escaping and versioned report serialization, confined to the
+  application implementation. Reports stream entries instead of constructing a duplicate document.
+- **CMake:** target-based C++20 requirements, strict warnings, optional GUI/tests/sanitizers.
+- **GoogleTest and QtTest:** parser, service, CLI and UI regressions; GUI tests run offscreen.
 
-### Unit tests
+## Testing
 
-Unit tests will cover:
+```sh
+ctest --test-dir build --output-on-failure
 
-* Log-level conversion
-* Timestamp parsing
-* Individual parser behavior
-* Parsing-error reporting
-* Rule conditions
-* Alert generation
-* Summary calculation
-* Storage repositories
-
-### Integration tests
-
-Integration tests will validate complete workflows:
-
-```text
-Fixture file
-      |
-      v
-Parser
-      |
-      v
-Normalization
-      |
-      v
-Rule evaluation
-      |
-      v
-Expected alerts
+cmake -S . -B build-asan -DCMAKE_BUILD_TYPE=Debug \
+  -DLOGINSIGHT_BUILD_GUI=ON -DLOGINSIGHT_FETCH_GTEST=OFF \
+  -DLOGINSIGHT_ENABLE_SANITIZERS=ON
+cmake --build build-asan --parallel 4
+ctest --test-dir build-asan --output-on-failure
 ```
 
-### Performance tests
+The desktop CTest case sets `QT_QPA_PLATFORM=offscreen`. It checks model integrity, filtering,
+sorting, selection/raw details, asynchronous import/export, sample loading, mixed input,
+failed-import preservation, busy-close handling and a larger import. ASan/UBSan are enabled
+for supported GCC/Clang builds. See [validation evidence](docs/PORTFOLIO_RELEASE_PLAN.md)
+for actual results and environmental restrictions.
 
-Later benchmarks will measure:
+To regenerate genuine screenshots from the GUI tests (GUI build required):
 
-* Parsing speed
-* Memory usage
-* SQLite insertion speed
-* Rule-engine performance
-* Processing time for large files
+```sh
+mkdir -p docs/images
+QT_QPA_PLATFORM=offscreen LOGINSIGHT_CAPTURE_DIR="$PWD/docs/images" \
+  ./build/tests/gui/loginsight_gui_tests
+```
 
-Planned test sizes:
+## Portfolio description
 
-* 1,000 entries
-* 100,000 entries
-* 1,000,000 entries
-
-Performance results will only be published after being measured on documented hardware.
+LogInsight demonstrates an end-to-end C++20 log-processing application: extensible parsers
+normalize input into domain values, shared application services calculate severity summaries
+and serialize reports, and a Qt desktop interface and CLI expose the same pipeline. The
+project emphasizes explicit failures, ownership, regression testing and reproducible demos.
 
 ## Roadmap
 
-### Milestone 1: Foundation
-
-* [x] Create the C++20 project
-* [x] Configure CMake
-* [x] Add GoogleTest
-* [x] Implement `LogEntry`
-* [x] Implement `LogLevel`
-* [x] Add log-level conversion tests
-
-### Milestone 2: Plain-text ingestion
-
-* [ ] Add `ParseError`
-* [ ] Add `ParseResult`
-* [ ] Add `ILogParser`
-* [ ] Implement timestamp parsing
-* [ ] Implement `PlainTextLogParser`
-* [ ] Add realistic fixtures
-* [ ] Implement `ParserRegistry`
-* [ ] Implement `FileImportService`
-
-### Milestone 3: CLI analysis
-
-* [ ] Implement the `analyse` command
-* [ ] Add severity summaries
-* [ ] Add deterministic CLI formatting
-* [ ] Add CLI integration tests
-
-### Milestone 4: Additional formats
-
-* [ ] Implement CSV parsing
-* [ ] Implement JSON parsing
-* [ ] Implement JSON Lines parsing
-* [ ] Add configurable field mappings
-
-### Milestone 5: Detection engine
-
-* [ ] Define the rule format
-* [ ] Implement the rule loader
-* [ ] Implement condition operators
-* [ ] Generate alerts
-* [ ] Add aggregation rules
-* [ ] Add event correlation
-
-### Milestone 6: Persistence and reporting
-
-* [ ] Add SQLite storage
-* [ ] Add analysis sessions
-* [ ] Export JSON reports
-* [ ] Export HTML reports
-
-### Milestone 7: Desktop application
-
-* [ ] Add Qt 6
-* [ ] Create the import screen
-* [ ] Create the dashboard
-* [ ] Create the log explorer
-* [ ] Create the alert explorer
-* [ ] Add background processing
-* [ ] Add cancellation and progress reporting
-
-### Milestone 8: Advanced analysis
-
-* [ ] Add statistical anomaly detection
-* [ ] Add log-template extraction
-* [ ] Add rare-event detection
-* [ ] Add frequency-spike detection
-* [ ] Add sequence analysis
-
-## Git workflow
-
-Development is organized around small, focused branches.
-
-Examples:
-
-```text
-feature/parse-result
-feature/parser-interface
-feature/timestamp-parser
-feature/plain-text-parser
-feature/parser-registry
-feature/cli-analysis
-```
-
-Commit messages follow the Conventional Commits format:
-
-```text
-feat(parser): implement plain-text log parser
-test(core): add log-level conversion cases
-fix(parser): preserve malformed raw lines
-refactor(cli): extract summary calculation
-docs(readme): document project architecture
-```
-
-Before every commit:
-
-1. Build the project.
-2. Run the tests.
-3. Review the diff.
-4. Avoid committing generated files or secrets.
-5. Stage only files related to the current task.
-
-## Contributing
-
-The project is currently developed as a personal software engineering project.
-
-Suggestions, bug reports, and technical feedback are welcome through GitHub issues.
-
-For larger changes, open an issue before creating a pull request so the proposed architecture can be discussed.
+- Add JSON Lines ingestion using the existing configuration model.
+- Add a small, tested rule engine before exposing an alerts screen.
+- Add cancellation and bounded/streaming ingestion for larger datasets.
+- Validate native desktop packaging and accessibility on additional platforms.
 
 ## License
 
-The license has not yet been selected.
-
-Before publishing or accepting external contributions, add an appropriate `LICENSE` file.
-
-Possible options include:
-
-* MIT License
-* Apache License 2.0
-* GNU General Public License v3.0
-
-## Author
-
-Developed by Valentin Bort-Esgueva.
-
-LogInsight is being built as a practical project focused on modern C++, software architecture, heterogeneous data processing, testing, and explainable log analysis.
+No `LICENSE` file is present and no license has been selected. This repository currently
+grants no explicit open-source license. The author must choose one before an open-source
+release. See the [release notes](docs/RELEASE_NOTES.md) for release readiness and limitations.

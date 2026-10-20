@@ -7,7 +7,7 @@ target_include_directories(
          $<INSTALL_INTERFACE:include>
 )
 
-target_link_libraries(loginsight_storage PUBLIC LogInsight::core SQLite::SQLite3)
+target_link_libraries(loginsight_storage PUBLIC LogInsight::core)
 
 loginsight_enable_warnings(loginsight_storage)
 loginsight_enable_sanitizers(loginsight_storage)

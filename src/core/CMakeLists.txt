@@ -7,7 +7,7 @@ target_include_directories(
          $<INSTALL_INTERFACE:include>
 )
 
-target_link_libraries(loginsight_core PUBLIC nlohmann_json::nlohmann_json spdlog::spdlog)
+target_compile_features(loginsight_core PUBLIC cxx_std_20)
 
 loginsight_enable_warnings(loginsight_core)
 loginsight_enable_sanitizers(loginsight_core)

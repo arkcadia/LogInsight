@@ -10,6 +10,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <variant>
 
 namespace loginsight::parsers {
@@ -70,7 +71,7 @@ using LineParseResult = std::variant<LineParseSuccess, LineParseFailure>;
 
 [[nodiscard]] bool has_non_space(std::string_view value) noexcept {
   for (const auto character : value) {
-    if (character != ' ') {
+    if (character != ' ' && character != '\t' && character != '\r') {
       return true;
     }
   }
@@ -79,7 +80,7 @@ using LineParseResult = std::variant<LineParseSuccess, LineParseFailure>;
 }
 
 [[nodiscard]] std::size_t skip_spaces(std::string_view value, std::size_t offset) noexcept {
-  while (offset < value.size() && value[offset] == ' ') {
+  while (offset < value.size() && (value[offset] == ' ' || value[offset] == '\t')) {
     ++offset;
   }
 
@@ -97,7 +98,7 @@ struct Token {
     return std::nullopt;
   }
 
-  const auto token_end = line.find(' ', offset);
+  const auto token_end = line.find_first_of(" \t", offset);
   if (token_end == std::string_view::npos) {
     return Token{.value = line.substr(offset), .next_offset = line.size()};
   }
@@ -116,7 +117,7 @@ struct Token {
   }
 
   auto offset = timestamp_size;
-  if (offset < line.size() && line[offset] != ' ') {
+  if (offset < line.size() && line[offset] != ' ' && line[offset] != '\t') {
     return LineParseFailure{"missing separator after timestamp"};
   }
 
@@ -190,9 +191,12 @@ ParseResult PlainTextLogParser::parse(std::istream& input) const {
       continue;
     }
 
-    const auto parsed_line = parse_line(line);
-    if (const auto* success = std::get_if<LineParseSuccess>(&parsed_line)) {
-      result.entries.push_back(success->entry);
+    if (!line.empty() && line.back() == '\r') {
+      line.pop_back();
+    }
+    auto parsed_line = parse_line(line);
+    if (auto* success = std::get_if<LineParseSuccess>(&parsed_line)) {
+      result.entries.push_back(std::move(success->entry));
       continue;
     }
 
@@ -204,6 +208,9 @@ ParseResult PlainTextLogParser::parse(std::istream& input) const {
     });
   }
 
+  if (input.bad() || (input.fail() && !input.eof())) {
+    result.errors.push_back({0U, {}, "unable to read input"});
+  }
   return result;
 }
 

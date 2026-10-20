@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <filesystem>
+#include <sstream>
 
 #include <gtest/gtest.h>
 
@@ -149,4 +150,22 @@ TEST(PlainTextLogParserTest, DetectsSupportedFileExtensions) {
   EXPECT_TRUE(parser.canParse("application.txt"));
   EXPECT_TRUE(parser.canParse("APPLICATION.LOG"));
   EXPECT_FALSE(parser.canParse("application.json"));
+}
+
+TEST(PlainTextLogParserTest, NormalizesCrLfAndAcceptsTabSeparators) {
+  std::istringstream input{"\r\n\t\r\n2026-07-13 18:42:10\tINFO\tgateway\tReady\r\n"};
+  const auto result = PlainTextLogParser{}.parse(input);
+  ASSERT_TRUE(result.errors.empty());
+  ASSERT_EQ(result.entries.size(), 1U);
+  EXPECT_EQ(result.entries.front().message, "Ready");
+  EXPECT_EQ(result.entries.front().rawContent.back(), 'y');
+}
+
+TEST(PlainTextLogParserTest, ReportsStreamReadFailure) {
+  std::istringstream input;
+  input.setstate(std::ios::badbit);
+  const auto result = PlainTextLogParser{}.parse(input);
+  ASSERT_EQ(result.errors.size(), 1U);
+  EXPECT_EQ(result.errors.front().lineNumber, 0U);
+  EXPECT_EQ(result.errors.front().message, "unable to read input");
 }

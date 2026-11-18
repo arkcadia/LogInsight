@@ -2,22 +2,14 @@
 
 #include "loginsight/parsers/file_import_service.hpp"
 #include "loginsight/parsers/parser_registry.hpp"
-#include "loginsight/parsers/plain_text_log_parser.hpp"
 
 #include <cstddef>
 #include <iostream>
-#include <memory>
 #include <string_view>
 #include <vector>
 
 int main(int argc, char* argv[]) try {
-  loginsight::parsers::ParserRegistry parser_registry;
-  if (!parser_registry.registerParser(
-          std::make_unique<loginsight::parsers::PlainTextLogParser>())) {
-    std::cerr << "Error: unable to configure parser registry.\n";
-    return static_cast<int>(loginsight::app::CommandExitCode::configuration_failure);
-  }
-
+  const auto parser_registry = loginsight::parsers::default_parser_registry();
   const loginsight::parsers::FileImportService import_service{parser_registry};
 
   std::vector<std::string_view> arguments;

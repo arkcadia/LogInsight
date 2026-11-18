@@ -23,10 +23,11 @@ int run_cli(std::span<const std::string_view> arguments,
             std::ostream& error_output) {
   if ((arguments.size() == 2U && (arguments[1] == "--help" || arguments[1] == "-h")) ||
       (arguments.size() == 3U && arguments[1] == "analyse" && arguments[2] == "--help")) {
-    output << "LogInsight — plain-text log analysis\n\n"
+    output << "LogInsight — local log analysis\n\n"
            << usage << "       loginsight analyse <file-path> --json <report-path>\n\n"
            << "Supported: .log and .txt, one record per line:\n"
            << "YYYY-MM-DD HH:MM:SS LEVEL SOURCE MESSAGE\n\n"
+           << "JSON Lines (.jsonl, .ndjson): timestamp, level, source, message.\n"
            << "Malformed records are counted; valid records remain available.\n"
            << "JSON export includes entries and malformed records; destination must not exist.\n"
            << "Example: loginsight analyse examples/logs/atlas.log --json report.json\n"

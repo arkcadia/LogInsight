@@ -94,6 +94,44 @@ private slots:
     QCOMPARE(window.logModel()->rowCount(), 13);
     QVERIFY(window.findChild<QLabel*>("statusText")->text().contains("Import failed"));
   }
+  void jsonLinesTimelineAndTimeRange() {
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const auto path = directory.filePath("events.JSONL");
+    QFile input{path};
+    QVERIFY(input.open(QIODevice::WriteOnly));
+    QVERIFY(input.write("{\"timestamp\":\"2026-10-20T09:00:00Z\",\"level\":\"INFO\",\"source\":"
+                        "\"svc\",\"message\":\"Started\"}\n"
+                        "malformed\n"
+                        "{\"timestamp\":\"2026-10-20T09:00:07Z\",\"level\":\"ERROR\",\"source\":"
+                        "\"svc\",\"message\":\"Failed\"}\n") > 0);
+    input.close();
+    MainWindow window;
+    window.show();
+    window.importFiles({path});
+    QTRY_VERIFY_WITH_TIMEOUT(!window.busy(), 10000);
+    auto* table = window.findChild<QTableView*>("logTable");
+    QCOMPARE(table->model()->rowCount(), 2);
+    QVERIFY(window.findChild<QTextEdit*>("diagnostics")->toPlainText().contains("Line 2"));
+    window.findChild<QListWidget*>("navigation")->setCurrentRow(1);
+    window.findChild<QPushButton*>("timelineBucket7")->click();
+    QCOMPARE(table->model()->rowCount(), 1);
+    QCOMPARE(table->model()->index(0, 3).data().toString(), QString{"Failed"});
+
+    auto* through = window.findChild<QLineEdit*>("timeThrough");
+    through->setText("2026-10-20 09:00:00");
+    QTest::keyClick(through, Qt::Key_Return);
+    QCOMPARE(table->model()->rowCount(), 1);
+    window.findChild<QPushButton*>("clearTimeRange")->click();
+    QCOMPARE(table->model()->rowCount(), 2);
+    through->setText("2026-10-20 09:00:00");
+    QTest::keyClick(through, Qt::Key_Return);
+    QCOMPARE(table->model()->rowCount(), 1);
+    QCOMPARE(table->model()->index(0, 3).data().toString(), QString{"Started"});
+    window.importFiles({LOGINSIGHT_SAMPLE_PATH});
+    QTRY_VERIFY_WITH_TIMEOUT(!window.busy(), 10000);
+    QCOMPARE(table->model()->rowCount(), 13);
+  }
   void sampleActionExportAndBusyClose() {
     MainWindow window;
     window.show();

@@ -7,6 +7,7 @@
 #include <QStringList>
 #include <array>
 #include <memory>
+#include <optional>
 #include <vector>
 
 namespace loginsight::gui {
@@ -46,6 +47,8 @@ public:
   void setSearch(QString search);
   void setSeverity(int level);
   void setSource(QString source);
+  void setTimeRange(std::optional<core::LogTimestamp> from,
+                    std::optional<core::LogTimestamp> through);
 
 protected:
   bool filterAcceptsRow(int row, const QModelIndex& parent) const override;
@@ -54,5 +57,7 @@ private:
   QString search_;
   QString source_;
   int level_{-1};
+  std::optional<core::LogTimestamp> from_;
+  std::optional<core::LogTimestamp> through_;
 };
 } // namespace loginsight::gui

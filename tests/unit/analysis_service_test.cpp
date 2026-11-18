@@ -22,6 +22,19 @@ TEST(AnalysisServiceTest, ClassifiesFailuresAndPreservesPartialImports) {
   EXPECT_EQ(result.summary.malformedLineCount, 4U);
   EXPECT_EQ(result.parsed.entries[0].source.file_path, result.path.string());
 }
+TEST(AnalysisServiceTest, ImportsJsonLinesAndRetainsMalformedRecordLocations) {
+  const auto result = AnalysisService{}.analyze(fixture("json_lines_mixed.ndjson"));
+  ASSERT_TRUE(result.completed());
+  ASSERT_EQ(result.parsed.entries.size(), 2U);
+  ASSERT_EQ(result.parsed.errors.size(), 3U);
+  EXPECT_EQ(result.summary.errorCount, 1U);
+  EXPECT_EQ(result.parsed.entries.back().source.name, "worker");
+  EXPECT_EQ(result.parsed.entries.back().message, "Failed");
+  EXPECT_EQ(result.parsed.entries.back().source.file_path, result.path.string());
+  EXPECT_EQ(result.parsed.errors[0].lineNumber, 2U);
+  EXPECT_EQ(result.parsed.errors[1].rawContent, "{malformed");
+  EXPECT_EQ(result.parsed.errors[2].lineNumber, 5U);
+}
 TEST(AnalysisServiceTest, ExportsEscapedEntriesAndMalformedRecords) {
   std::vector<AnalysisResult> files;
   files.push_back(AnalysisService{}.analyze(fixture("plain_text_mixed.log")));

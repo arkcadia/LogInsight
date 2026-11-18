@@ -4,6 +4,7 @@ add_library(
          src/parser_module.cpp
          src/file_import_service.cpp
          src/json_parser_config.cpp
+         src/json_lines_log_parser.cpp
          src/parser_registry.cpp
          src/plain_text_log_parser.cpp
          src/timestamp_parser.cpp
@@ -16,7 +17,7 @@ target_include_directories(
          $<INSTALL_INTERFACE:include>
 )
 
-target_link_libraries(loginsight_parsers PUBLIC LogInsight::core)
+target_link_libraries(loginsight_parsers PUBLIC LogInsight::core PRIVATE nlohmann_json::nlohmann_json)
 
 loginsight_enable_warnings(loginsight_parsers)
 loginsight_enable_sanitizers(loginsight_parsers)

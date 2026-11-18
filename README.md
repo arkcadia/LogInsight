@@ -1,6 +1,6 @@
 # LogInsight
 
-A C++20 desktop and command-line tool for inspecting structured plain-text logs.
+A C++20 desktop and command-line tool for inspecting plain-text and JSON Lines logs.
 Import files, compare severity counts, filter individual events, inspect original records,
 and export a JSON report that includes malformed input. Processing stays on your machine.
 
@@ -12,17 +12,18 @@ and export a JSON report that includes malformed input. Processing stays on your
 
 ## Features
 
-- `.log` and `.txt` ingestion with normalized timestamps, severities, sources and messages.
+- `.log`, `.txt`, `.jsonl` and `.ndjson` ingestion with normalized timestamps, severities, sources and messages.
 - Malformed records reported separately while valid records remain available.
 - Dark Qt 6 interface with severity distribution and import diagnostics.
 - Multi-file sessions, native file selection, drag-and-drop and one-click sample loading.
-- Sortable table, message search, severity/source filters and raw-record details.
+- Sortable table, message search, severity/source filters, UTC time ranges and raw-record details.
+- Clickable session timeline with counts of events, errors and critical events per time bucket.
 - Background import and export; the current session remains explorable during processing.
 - CLI summaries, documented exit codes and JSON export for automation.
 - Qt-free core and application services, with an optional desktop build.
 
 There is no rule engine or generated alert system in this release. Rules, alerts and storage
-modules are scaffolding; JSON configuration validation exists without a JSON input parser.
+modules are scaffolding.
 
 ## Quick start
 
@@ -75,7 +76,9 @@ not been verified.
 1. Click **Load Sample Logs**, or **Import Logs** to select one or several files.
 2. Review valid-entry counts, severity distribution and malformed-record diagnostics.
 3. Open **Log Explorer**. Search message text, select a severity/source, or click a column
-   header to sort. Select a row to inspect its message, input path and raw record.
+   header to sort. Click a timeline bucket or enter one or both UTC bounds and select **Apply**.
+   Both bounds are inclusive, and the time range combines with the other filters. Use
+   **Clear range** to show all times. Select a row to inspect its message, input path and raw record.
 4. Select **Export JSON** and choose a new destination. Export includes the entire session,
    regardless of table filters, along with failed-file diagnostics and malformed records.
 
@@ -145,19 +148,34 @@ YYYY-MM-DD HH:MM:SS LEVEL SOURCE MESSAGE
   plain-text record grammar. Zone-free timestamps are interpreted as UTC.
 - Invalid dates, unsupported levels and missing fields are malformed records.
 - Spaces/tabs separate fields. Empty/whitespace-only lines are ignored; LF and CRLF work.
-- Fractional seconds, timezone offsets, multiline events, CSV, JSON and JSON Lines are unsupported.
+- Plain-text timestamps have second precision. Multiline records and CSV are unsupported.
 - Timestamps must fit the platform's `system_clock` range (roughly 1677–2262 on the validated system).
 - UTF-8 is expected; desktop display and JSON export replace invalid UTF-8 sequences.
 - Data and raw records stay in memory. The table uses a model/proxy rather than per-row widgets,
   but filtering/sorting still runs on the UI thread. This is not a streaming or unbounded-data tool.
   A 30,000-entry import is covered by a responsiveness regression test; no throughput benchmark is claimed.
 
+### JSON Lines
+
+Import a `.jsonl` or `.ndjson` file through the desktop or with `loginsight analyse <file>`.
+Each nonblank line must be a JSON object with string fields `timestamp`, `level`, `source`
+and `message`.
+
+```json
+{"timestamp":"2026-10-20T09:00:15Z","level":"error","source":"worker","message":"Database connection failed"}
+```
+
+Timestamps accept a space or `T` separator and an optional `Z`. They use UTC and have
+second precision. Fractional seconds and timezone offsets are unsupported. Malformed lines
+retain the original text and line number while valid records remain available.
+Standalone `.json` files and JSON arrays are unsupported.
+
 ## Architecture
 
 ```mermaid
 flowchart LR
-    Input[Plain-text files] --> Registry[ParserRegistry / FileImportService]
-    Registry --> Parser[PlainTextLogParser]
+    Input[Plain-text / JSON Lines files] --> Registry[ParserRegistry / FileImportService]
+    Registry --> Parser[Plain-text / JSON Lines parser]
     Parser --> Model[Normalized LogEntry + ParseError]
     Model --> Service[Application analysis service]
     Service --> Summary[Severity summary]
@@ -186,8 +204,8 @@ flowchart LR
 - **Qt 6 Widgets/Concurrent:** workers construct immutable datasets. Watcher completion updates
   widgets/models on the UI thread. Export snapshots share the session without copying records.
   This follows Qt's [worker/watcher model](https://doc.qt.io/qt-6.8/qfuturewatcher.html).
-- **nlohmann/json:** safe JSON escaping and versioned report serialization, confined to the
-  application implementation. Reports stream entries instead of constructing a duplicate document.
+- **nlohmann/json:** JSON Lines parsing and safe, versioned report serialization. Reports
+  stream entries instead of constructing a duplicate document.
 - **CMake:** target-based C++20 requirements, strict warnings, optional GUI/tests/sanitizers.
 - **GoogleTest and QtTest:** parser, service, CLI and UI regressions; GUI tests run offscreen.
 
@@ -226,7 +244,6 @@ project emphasizes explicit failures, ownership, regression testing and reproduc
 
 ## Roadmap
 
-- Add JSON Lines ingestion using the existing configuration model.
 - Add a small, tested rule engine before exposing an alerts screen.
 - Add cancellation and bounded/streaming ingestion for larger datasets.
 - Validate native desktop packaging and accessibility on additional platforms.

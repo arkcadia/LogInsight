@@ -63,7 +63,7 @@ not match the local platform.
 tests, serialization, and UI presentation. Values remain strings until a later feature needs typed
 attributes.
 
-## Current plain-text input and reports
+## Plain-text input
 
 The plain-text parser is implemented for `.log`/`.txt`. Records use
 `YYYY-MM-DD HH:MM:SS LEVEL SOURCE MESSAGE` (space or `T` inside the timestamp;
@@ -73,8 +73,19 @@ alias conversion is not the plain-text grammar. No `Z` suffix, fractional second
 offsets are accepted in plain-text records. The standalone timestamp helper also supports
 `Z`, but the record parser intentionally uses a fixed 19-character timestamp.
 
+## JSON Lines input
+
+The JSON Lines parser accepts `.jsonl` and `.ndjson`. Each nonblank line is a JSON object
+with string fields `timestamp`, `level`, `source` and `message` by default. Timestamps use
+the same UTC calendar rules as plain text and also accept a `Z` suffix. JSON Lines accepts
+the core severity aliases and rejects the explicit unknown level. The C++ parser API accepts
+validated dot-separated field paths and can use the filename stem when no source field is
+configured. The desktop and CLI use the default field names.
+
+## Import results and reports
+
 `rawContent` preserves the input record excluding its LF/CRLF line terminator. Import services
 attach the input path to `source.file_path`. Malformed records retain line number/raw content/reason;
 line zero denotes an I/O failure rather than a malformed record. Application services exclude
 I/O-failed files from valid session counts. JSON schema version 1 exports UTC timestamps with
-`Z`, entries, summary counts and all malformed records; this is an output format, not an input parser.
+`Z`, entries, summary counts and all malformed records; the report schema is separate from JSON Lines input.

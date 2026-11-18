@@ -1,4 +1,5 @@
 #include "main_window.hpp"
+#include "loginsight/parsers/timestamp_parser.hpp"
 #include <QApplication>
 #include <QCloseEvent>
 #include <QComboBox>
@@ -109,7 +110,7 @@ MainWindow::MainWindow() {
   navigation->setCurrentRow(0);
   navigation->setObjectName("navigation");
   side->addWidget(navigation);
-  auto* sideNote = label("  PORTFOLIO MVP\n\n  Plain-text analysis\n  Local processing",
+  auto* sideNote = label("  PORTFOLIO MVP\n\n  Log investigation\n  Local processing",
                          "color: #8b8da2; font-size: 11px;");
   side->addWidget(sideNote);
   body->addWidget(sidebar);
@@ -125,8 +126,9 @@ MainWindow::MainWindow() {
   dashboard->addWidget(
       label("SESSION OVERVIEW", "color: #b29adf; font-size: 11px; letter-spacing: 2px;"));
   dashboard->addWidget(label("Make sense of your logs.", "font-size: 28px; font-weight: 600;"));
-  overviewText_ = label("Start with the sample session, or import .log and .txt files. You can "
-                        "also drop files here.");
+  overviewText_ =
+      label("Start with the sample session, or import plain-text or JSON Lines logs. You can "
+            "also drop files here.");
   overviewText_->setWordWrap(true);
   overviewText_->setStyleSheet("color: #acafc2;");
   dashboard->addWidget(overviewText_);
@@ -206,6 +208,66 @@ MainWindow::MainWindow() {
   filters->addWidget(severity_);
   filters->addWidget(source_);
   logs->addLayout(filters);
+  auto* timeline = new QGridLayout;
+  logs->addWidget(label("Session timeline · UTC · bars show error and critical counts"));
+  for (std::size_t i = 0; i < timelineSize; ++i) {
+    auto* bar = timelineBars_[i] = new QProgressBar;
+    bar->setRange(0, 1);
+    bar->setValue(0);
+    bar->setTextVisible(false);
+    bar->setFixedHeight(6);
+    bar->setStyleSheet("QProgressBar::chunk { background: #ff9393; }");
+    auto* button = timelineButtons_[i] = new QPushButton{"—"};
+    button->setStyleSheet("padding: 4px;");
+    button->setObjectName(QString("timelineBucket%1").arg(i));
+    button->setEnabled(false);
+    timeline->addWidget(bar, 0, static_cast<int>(i));
+    timeline->addWidget(button, 1, static_cast<int>(i));
+    timeline->setColumnStretch(static_cast<int>(i), 1);
+    connect(button, &QPushButton::clicked, this, [this, i] {
+      const auto& [from, through] = timelineRanges_[i];
+      from_->setText(from);
+      through_->setText(through);
+      applyTimeRange();
+    });
+  }
+  timelineStart_ = label({}, "color: #acafc2;");
+  timelineEnd_ = label({}, "color: #acafc2;");
+  timeline->addWidget(timelineStart_, 2, 0, 1, static_cast<int>(timelineSize / 2));
+  timeline->addWidget(timelineEnd_, 2, static_cast<int>(timelineSize / 2), 1,
+                      static_cast<int>(timelineSize / 2), Qt::AlignRight);
+  logs->addLayout(timeline);
+  auto* timeFilters = new QHBoxLayout;
+  from_ = new QLineEdit;
+  through_ = new QLineEdit;
+  from_->setObjectName("timeFrom");
+  through_->setObjectName("timeThrough");
+  from_->setAccessibleName("From UTC, inclusive");
+  through_->setAccessibleName("Through UTC, inclusive");
+  for (auto* edit : {from_, through_}) {
+    edit->setPlaceholderText("YYYY-MM-DD HH:MM:SS");
+    connect(edit, &QLineEdit::returnPressed, this, &MainWindow::applyTimeRange);
+  }
+  timeFilters->addWidget(label("From UTC"));
+  timeFilters->addWidget(from_, 1);
+  timeFilters->addWidget(label("Through UTC"));
+  timeFilters->addWidget(through_, 1);
+  auto* apply = new QPushButton{"Apply"};
+  auto* clear = new QPushButton{"Clear range"};
+  clear->setObjectName("clearTimeRange");
+  timeFilters->addWidget(apply);
+  timeFilters->addWidget(clear);
+  logs->addLayout(timeFilters);
+  timeRangeError_ = label({}, "color: #ff9393;");
+  timeRangeError_->setWordWrap(true);
+  timeRangeError_->hide();
+  logs->addWidget(timeRangeError_);
+  connect(apply, &QPushButton::clicked, this, &MainWindow::applyTimeRange);
+  connect(clear, &QPushButton::clicked, this, [this] {
+    from_->clear();
+    through_->clear();
+    applyTimeRange();
+  });
   auto* splitter = new QSplitter{Qt::Vertical};
   table_ = new QTableView;
   table_->setObjectName("logTable");
@@ -250,7 +312,7 @@ MainWindow::MainWindow() {
   connect(import_, &QPushButton::clicked, this, [this] {
     const auto paths =
         QFileDialog::getOpenFileNames(this, "Import logs — replaces current session", {},
-                                      "Plain-text logs (*.log *.txt);;All files (*)");
+                                      "Log files (*.log *.txt *.jsonl *.ndjson);;All files (*)");
     importFiles(paths);
   });
   connect(export_, &QPushButton::clicked, this, &MainWindow::exportReport);
@@ -325,7 +387,11 @@ void MainWindow::loadSamples() {
   importFiles({QApplication::applicationDirPath() + "/samples/atlas.log"});
 }
 void MainWindow::refresh() {
+  from_->clear();
+  through_->clear();
+  applyTimeRange();
   model_->setDataset(dataset_);
+  refreshTimeline();
   search_->clear();
   proxy_->setSearch({});
   severity_->setCurrentIndex(0);
@@ -360,6 +426,68 @@ void MainWindow::refresh() {
                         .arg(dataset_->importedFiles)
                         .arg(dataset_->entries.size()));
 }
+void MainWindow::applyTimeRange() {
+  const auto fromText = from_->text().trimmed();
+  const auto throughText = through_->text().trimmed();
+  const auto from = parsers::parse_timestamp(fromText.toStdString());
+  const auto through = parsers::parse_timestamp(throughText.toStdString());
+  QString error;
+  if ((!fromText.isEmpty() && !from) || (!throughText.isEmpty() && !through))
+    error = "Enter UTC timestamps as YYYY-MM-DD HH:MM:SS, or leave a bound blank.";
+  else if (from && through && *from > *through)
+    error = "From UTC must be earlier than or equal to Through UTC.";
+  timeRangeError_->setText(error);
+  timeRangeError_->setVisible(!error.isEmpty());
+  if (error.isEmpty())
+    proxy_->setTimeRange(from, through);
+}
+
+void MainWindow::refreshTimeline() {
+  using namespace std::chrono;
+  std::array<int, timelineSize> totals{};
+  std::array<int, timelineSize> errors{};
+  const auto& entries = dataset_->entries;
+  const auto bounds =
+      std::minmax_element(entries.begin(), entries.end(),
+                          [](const auto* a, const auto* b) { return a->timestamp < b->timestamp; });
+  const auto first = entries.empty() ? sys_seconds{} : floor<seconds>((*bounds.first)->timestamp);
+  const auto last = entries.empty() ? first : floor<seconds>((*bounds.second)->timestamp);
+  timelineStart_->setText(entries.empty() ? QString{}
+                                          : QString::fromStdString(app::format_timestamp(first)));
+  timelineEnd_->setText(entries.empty() ? QString{}
+                                        : QString::fromStdString(app::format_timestamp(last)));
+  const auto width = seconds{(last - first).count() / static_cast<seconds::rep>(timelineSize) + 1};
+  for (const auto* entry : entries) {
+    const auto index = static_cast<std::size_t>((floor<seconds>(entry->timestamp) - first) / width);
+    ++totals[index];
+    if (entry->level == core::LogLevel::error || entry->level == core::LogLevel::critical)
+      ++errors[index];
+  }
+  const auto peak = std::max(1, *std::max_element(errors.begin(), errors.end()));
+  for (std::size_t i = 0; i < timelineSize; ++i) {
+    const auto from = first + width * static_cast<seconds::rep>(i);
+    const bool active = !entries.empty() && from <= last;
+    auto* button = timelineButtons_[i];
+    button->setEnabled(active);
+    button->setText(active ? QString::number(totals[i]) : QString{"—"});
+    QString description;
+    if (active) {
+      const auto through = std::min(last, from + width - seconds{1});
+      auto& [startText, endText] = timelineRanges_[i];
+      startText = QString::fromStdString(app::format_timestamp(from));
+      endText = QString::fromStdString(app::format_timestamp(through));
+      description = QString("%1 through %2 · %3 events · %4 errors or critical")
+                        .arg(startText, endText)
+                        .arg(totals[i])
+                        .arg(errors[i]);
+    }
+    button->setToolTip(description);
+    button->setAccessibleName(description);
+    timelineBars_[i]->setRange(0, peak);
+    timelineBars_[i]->setValue(errors[i]);
+  }
+}
+
 void MainWindow::showDetails(const QModelIndex& index) {
   const auto mapped = proxy_->mapToSource(index);
   const auto* entry = model_->entry(mapped.row());

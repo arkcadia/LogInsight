@@ -3,6 +3,7 @@
 #include <QFutureWatcher>
 #include <QMainWindow>
 #include <array>
+#include <utility>
 
 class QLabel;
 class QPushButton;
@@ -30,6 +31,8 @@ protected:
 
 private:
   void refresh();
+  void refreshTimeline();
+  void applyTimeRange();
   void setBusy(bool busy, const QString& text);
   void exportReport();
   void showDetails(const QModelIndex& index);
@@ -48,6 +51,15 @@ private:
   QLabel* overviewText_{};
   QLabel* explorerCount_{};
   QLineEdit* search_{};
+  QLineEdit* from_{};
+  QLineEdit* through_{};
+  QLabel* timeRangeError_{};
+  QLabel* timelineStart_{};
+  QLabel* timelineEnd_{};
+  static constexpr std::size_t timelineSize = 8;
+  std::array<QPushButton*, timelineSize> timelineButtons_{};
+  std::array<QProgressBar*, timelineSize> timelineBars_{};
+  std::array<std::pair<QString, QString>, timelineSize> timelineRanges_{};
   QComboBox* severity_{};
   QComboBox* source_{};
   QPushButton* import_{};

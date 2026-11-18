@@ -1,0 +1,5 @@
+{"timestamp":"2026-10-20T09:00:01Z","level":"INFO","source":"gateway","message":"Started"}
+{"timestamp":"2026-10-20T09:00:02Z","level":42,"source":"worker","message":"Bad level"}
+{"timestamp":"2026-10-20T09:00:03Z","level":"ERROR","source":"worker","message":"Failed"}
+{malformed
+{"timestamp":"2026-02-30T09:00:04Z","level":"INFO","source":"gateway","message":"Bad date"}

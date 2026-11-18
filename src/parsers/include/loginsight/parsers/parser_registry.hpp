@@ -17,4 +17,6 @@ private:
   std::vector<std::unique_ptr<ILogParser>> parsers_;
 };
 
+[[nodiscard]] ParserRegistry default_parser_registry();
+
 } // namespace loginsight::parsers

@@ -142,12 +142,19 @@ void LogFilter::setSource(QString value) {
   source_ = std::move(value);
   invalidate();
 }
+void LogFilter::setTimeRange(std::optional<core::LogTimestamp> from,
+                             std::optional<core::LogTimestamp> through) {
+  from_ = from;
+  through_ = through;
+  invalidate();
+}
 bool LogFilter::filterAcceptsRow(int row, const QModelIndex& parent) const {
   const auto* model = static_cast<const LogModel*>(sourceModel());
   const auto* item = model->entry(row);
   if (!item || parent.isValid())
     return false;
-  return (level_ < 0 || static_cast<int>(item->level) == level_) &&
+  return (!from_ || item->timestamp >= *from_) && (!through_ || item->timestamp <= *through_) &&
+         (level_ < 0 || static_cast<int>(item->level) == level_) &&
          (source_.isEmpty() || QString::fromStdString(item->source.name) == source_) &&
          (search_.isEmpty() ||
           QString::fromStdString(item->message).contains(search_, Qt::CaseInsensitive));

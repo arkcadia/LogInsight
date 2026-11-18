@@ -1,5 +1,4 @@
 #include "loginsight/app/analysis_service.hpp"
-#include "loginsight/parsers/plain_text_log_parser.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -13,11 +12,7 @@
 #include <system_error>
 
 namespace loginsight::app {
-AnalysisService::AnalysisService() {
-  if (!registry_.registerParser(std::make_unique<parsers::PlainTextLogParser>())) {
-    throw std::runtime_error("unable to configure plain-text parser");
-  }
-}
+AnalysisService::AnalysisService() : registry_(parsers::default_parser_registry()) {}
 
 AnalysisResult AnalysisService::analyze(const std::filesystem::path& path) const {
   return analyze_file(path, parsers::FileImportService{registry_});

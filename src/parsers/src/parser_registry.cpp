@@ -1,5 +1,9 @@
 #include "loginsight/parsers/parser_registry.hpp"
 
+#include "loginsight/parsers/json_lines_log_parser.hpp"
+#include "loginsight/parsers/plain_text_log_parser.hpp"
+
+#include <stdexcept>
 #include <utility>
 
 namespace loginsight::parsers {
@@ -21,6 +25,14 @@ const ILogParser* ParserRegistry::findParser(const std::filesystem::path& path) 
   }
 
   return nullptr;
+}
+
+ParserRegistry default_parser_registry() {
+  ParserRegistry registry;
+  if (!registry.registerParser(std::make_unique<PlainTextLogParser>()) ||
+      !registry.registerParser(std::make_unique<JsonLinesLogParser>()))
+    throw std::runtime_error("unable to configure parser registry");
+  return registry;
 }
 
 } // namespace loginsight::parsers

@@ -24,11 +24,13 @@ struct AnalysisResult {
 
 // Shared by the CLI and desktop; no presentation dependencies.
 [[nodiscard]] AnalysisResult analyze_file(const std::filesystem::path& path,
-                                          const parsers::FileImportService& importer);
+                                          const parsers::FileImportService& importer,
+                                          parsers::ImportBudget* budget = nullptr);
 class AnalysisService {
 public:
-  AnalysisService();
-  [[nodiscard]] AnalysisResult analyze(const std::filesystem::path& path) const;
+  explicit AnalysisService(parsers::JsonParserConfig config = {});
+  [[nodiscard]] AnalysisResult analyze(const std::filesystem::path& path,
+                                       parsers::ImportBudget* budget = nullptr) const;
 
 private:
   parsers::ParserRegistry registry_;
@@ -41,5 +43,9 @@ void write_json_report(std::ostream& output, std::span<const AnalysisResult> res
 // exclusive hard link.
 void save_json_report(const std::filesystem::path& destination,
                       std::span<const AnalysisResult> results);
+
+void save_visible_report(const std::filesystem::path& destination,
+                         std::span<const core::LogEntry* const> entries,
+                         const core::LogAttributes& filters);
 
 } // namespace loginsight::app

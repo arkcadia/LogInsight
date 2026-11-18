@@ -9,7 +9,11 @@ class JsonLinesLogParser final : public ILogParser {
 public:
   explicit JsonLinesLogParser(JsonParserConfig config = {});
   [[nodiscard]] bool canParse(const std::filesystem::path& path) const override;
-  [[nodiscard]] ParseResult parse(const std::filesystem::path& path) const override;
+  [[nodiscard]] ParseResult parse(const std::filesystem::path& path) const override {
+    return parse(path, nullptr);
+  }
+  [[nodiscard]] ParseResult parse(const std::filesystem::path& path,
+                                  ImportBudget* budget) const override;
 
 private:
   JsonParserConfig config_;

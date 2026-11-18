@@ -7,7 +7,8 @@ namespace loginsight::parsers {
 FileImportService::FileImportService(const ParserRegistry& registry) noexcept
     : registry_{registry} {}
 
-FileImportResult FileImportService::importFile(const std::filesystem::path& path) const {
+FileImportResult FileImportService::importFile(const std::filesystem::path& path,
+                                               ImportBudget* budget) const {
   const auto* parser = registry_.findParser(path);
   if (parser == nullptr) {
     return {};
@@ -15,7 +16,7 @@ FileImportResult FileImportService::importFile(const std::filesystem::path& path
 
   return FileImportResult{
       .status = FileImportStatus::completed,
-      .parseResult = parser->parse(path),
+      .parseResult = parser->parse(path, budget),
   };
 }
 

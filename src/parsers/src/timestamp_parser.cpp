@@ -50,7 +50,38 @@ constexpr std::size_t timestamp_with_utc_size = timestamp_size + 1;
 } // namespace
 
 std::optional<std::chrono::system_clock::time_point>
-parse_timestamp(std::string_view value) noexcept {
+parse_timestamp(std::string_view value, bool allowSubsecondsAndOffset) noexcept {
+  using namespace std::chrono;
+  int fractionalNanoseconds = 0;
+  minutes offset{};
+  if (allowSubsecondsAndOffset && value.size() > timestamp_size) {
+    auto suffix = value.substr(timestamp_size);
+    value = value.substr(0, timestamp_size);
+    if (suffix.starts_with('.')) {
+      suffix.remove_prefix(1);
+      std::size_t digits = 0;
+      while (digits < suffix.size() && is_digit(suffix[digits]))
+        ++digits;
+      if (digits == 0 || digits > 9)
+        return std::nullopt;
+      fractionalNanoseconds = *parse_fixed_int(suffix, 0, digits);
+      suffix.remove_prefix(digits);
+      for (; digits < 9; ++digits)
+        fractionalNanoseconds *= 10;
+    }
+    if (!suffix.empty() && suffix != "Z") {
+      if (suffix.size() != 6 || (suffix.front() != '+' && suffix.front() != '-') ||
+          suffix[3] != ':')
+        return std::nullopt;
+      const auto hoursValue = parse_fixed_int(suffix, 1, 2);
+      const auto minutesValue = parse_fixed_int(suffix, 4, 2);
+      if (!hoursValue || *hoursValue > 23 || !minutesValue || *minutesValue > 59)
+        return std::nullopt;
+      offset = hours{*hoursValue} + minutes{*minutesValue};
+      if (suffix.front() == '-')
+        offset = -offset;
+    }
+  }
   if (!has_supported_shape(value)) {
     return std::nullopt;
   }
@@ -79,14 +110,28 @@ parse_timestamp(std::string_view value) noexcept {
   }
 
   const auto timestamp = std::chrono::sys_days{date} + std::chrono::hours{*hour_value} +
-                         std::chrono::minutes{*minute_value} + std::chrono::seconds{*second_value};
-  // Converting seconds outside system_clock's range (often nanoseconds) overflows.
-  using Clock = std::chrono::system_clock;
-  if (timestamp < std::chrono::ceil<std::chrono::seconds>(Clock::time_point::min()) ||
-      timestamp > std::chrono::floor<std::chrono::seconds>(Clock::time_point::max())) {
+                         std::chrono::minutes{*minute_value} + std::chrono::seconds{*second_value} -
+                         offset;
+  // Compare the whole-second part before converting it to a finer clock duration.
+  using Clock = system_clock;
+  const auto fraction = duration_cast<Clock::duration>(nanoseconds{fractionalNanoseconds});
+  const auto minimum = Clock::time_point::min();
+  const auto maximum = Clock::time_point::max();
+  const auto firstWhole = ceil<seconds>(minimum);
+  const auto lastWhole = floor<seconds>(maximum);
+  if (timestamp < floor<seconds>(minimum) || timestamp > lastWhole)
     return std::nullopt;
+  if (timestamp < firstWhole) {
+    const auto next = time_point_cast<Clock::duration>(firstWhole);
+    const auto back = seconds{1} - fraction;
+    if (back > next - minimum)
+      return std::nullopt;
+    return next - back;
   }
-  return std::chrono::time_point_cast<Clock::duration>(timestamp);
+  const auto whole = time_point_cast<Clock::duration>(timestamp);
+  if (timestamp == lastWhole && fraction > maximum - whole)
+    return std::nullopt;
+  return whole + fraction;
 }
 
 } // namespace loginsight::parsers

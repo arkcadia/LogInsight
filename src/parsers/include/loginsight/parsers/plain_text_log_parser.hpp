@@ -12,8 +12,12 @@ namespace loginsight::parsers {
 class PlainTextLogParser final : public ILogParser {
 public:
   [[nodiscard]] bool canParse(const std::filesystem::path& path) const override;
-  [[nodiscard]] ParseResult parse(const std::filesystem::path& path) const override;
-  [[nodiscard]] ParseResult parse(std::istream& input) const;
+  [[nodiscard]] ParseResult parse(const std::filesystem::path& path) const override {
+    return parse(path, nullptr);
+  }
+  [[nodiscard]] ParseResult parse(const std::filesystem::path& path,
+                                  ImportBudget* budget) const override;
+  [[nodiscard]] ParseResult parse(std::istream& input, ImportBudget* budget = nullptr) const;
 };
 
 } // namespace loginsight::parsers

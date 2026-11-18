@@ -18,12 +18,16 @@ and export a JSON report that includes malformed input. Processing stays on your
 - Multi-file sessions, native file selection, drag-and-drop and one-click sample loading.
 - Sortable table, message search, severity/source filters, UTC time ranges and raw-record details.
 - Clickable session timeline with counts of events, errors and critical events per time bucket.
-- Background import and export; the current session remains explorable during processing.
+- Background import and export. Desktop imports show progress, support cancellation and enforce
+  batch limits while the current session remains explorable.
+- Configurable burst alerts link to the matching records in Log Explorer.
+- Request and trace drill-down follows IDs across imported services.
+- Visible-record JSON export includes active filters and source file paths.
 - CLI summaries, documented exit codes and JSON export for automation.
 - Qt-free core and application services, with an optional desktop build.
 
-There is no rule engine or generated alert system in this release. Rules, alerts and storage
-modules are scaffolding.
+Desktop alerts evaluate a configurable burst rule over the imported session.
+The alerts and storage libraries remain scaffolding.
 
 ## Quick start
 
@@ -79,14 +83,31 @@ not been verified.
    header to sort. Click a timeline bucket or enter one or both UTC bounds and select **Apply**.
    Both bounds are inclusive, and the time range combines with the other filters. Use
    **Clear range** to show all times. Select a row to inspect its message, input path and raw record.
+   If it includes a request or trace ID, choose **Show request events** or **Show trace events**
+   to see exact matches across all sources in chronological order. Use **Clear drill-down**
+   to remove the ID or alert restriction.
 4. Select **Export JSON** and choose a new destination. Export includes the entire session,
-   regardless of table filters, along with failed-file diagnostics and malformed records.
+   regardless of table filters, along with failed-file diagnostics and malformed records. Use
+   **Export visible records** in Log Explorer to save only matching rows in their current sort order,
+   with the active filters and the source path for each record.
 
 Each import replaces the current session; selecting multiple files creates one session.
 A batch in which every file fails keeps the prior session. Empty or entirely malformed
 files are valid imports with zero valid entries. Duplicate paths within one selection are
 imported once. Diagnostics show up to 20 malformed-record reasons per file; JSON contains
-all of them. Imports/exports must finish before closing the window; cancellation is future work.
+all of them. While importing, select **Cancel import** to keep the previous session. Desktop
+imports are limited to 128 files, 32 MiB of input per batch, 200,000 physical lines per batch
+(including blank and malformed lines), and 256 KiB per line excluding LF.
+Exceeding a limit keeps the previous session. Imports and exports must finish before closing the
+window. These limits apply to the desktop.
+
+### Burst alerts
+
+In **Overview**, select an alert and choose **Open matching records**. The default rule flags
+five `ERROR` or `CRITICAL` events from the same source within 60 seconds, including events
+spread across multiple files. **Alert rule** lets you change the event count, window, minimum
+severity, and optional exact source. Changes reevaluate the current session. The rule orders
+records by timestamp and uses each matching record once. Settings last until the app closes.
 
 ### Command line
 
@@ -130,7 +151,7 @@ Critical: 1
 Unknown: 0
 ```
 
-These are event severity counts, not detection-rule alerts. The sample includes recovery,
+The sample includes recovery,
 latency warnings, synthetic service failures and deliberately malformed records.
 
 ## Supported formats and limits
@@ -158,16 +179,20 @@ YYYY-MM-DD HH:MM:SS LEVEL SOURCE MESSAGE
 ### JSON Lines
 
 Import a `.jsonl` or `.ndjson` file through the desktop or with `loginsight analyse <file>`.
-Each nonblank line must be a JSON object with string fields `timestamp`, `level`, `source`
-and `message`.
+Each nonblank line must be a JSON object. The default string fields are `timestamp`, `level`,
+`source`, and `message`. In the desktop **JSON fields** dialog, use dots for nested paths, such
+as `event.ts`, or leave the source mapping blank to use the filename stem. Mappings apply to
+subsequent imports until the app closes. The CLI uses the default names.
 
 ```json
 {"timestamp":"2026-10-20T09:00:15Z","level":"error","source":"worker","message":"Database connection failed"}
 ```
 
-Timestamps accept a space or `T` separator and an optional `Z`. They use UTC and have
-second precision. Fractional seconds and timezone offsets are unsupported. Malformed lines
-retain the original text and line number while valid records remain available.
+Timestamps accept a space or `T` separator, up to nine fractional digits, and either `Z`
+or a numeric offset such as `+02:00`. Timestamps without an offset are interpreted as UTC.
+The explorer and JSON reports display normalized UTC. Optional top-level string fields
+`trace_id` and `request_id` enable correlation. Malformed lines retain the original text and
+line number while valid records remain available.
 Standalone `.json` files and JSON arrays are unsupported.
 
 ## Architecture
@@ -244,8 +269,7 @@ project emphasizes explicit failures, ownership, regression testing and reproduc
 
 ## Roadmap
 
-- Add a small, tested rule engine before exposing an alerts screen.
-- Add cancellation and bounded/streaming ingestion for larger datasets.
+- Explore streaming ingestion and paged browsing for sessions beyond the desktop limits.
 - Validate native desktop packaging and accessibility on additional platforms.
 
 ## License

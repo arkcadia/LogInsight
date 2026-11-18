@@ -1,6 +1,8 @@
 #include "main_window.hpp"
 #include <QAbstractItemModelTester>
 #include <QComboBox>
+#include <QDialog>
+#include <QDialogButtonBox>
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -10,6 +12,7 @@
 #include <QListWidget>
 #include <QPushButton>
 #include <QSignalSpy>
+#include <QSpinBox>
 #include <QTableView>
 #include <QTemporaryDir>
 #include <QTest>
@@ -131,6 +134,140 @@ private slots:
     window.importFiles({LOGINSIGHT_SAMPLE_PATH});
     QTRY_VERIFY_WITH_TIMEOUT(!window.busy(), 10000);
     QCOMPARE(table->model()->rowCount(), 13);
+  }
+  void mappedJsonCorrelationAndVisibleExport() {
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const auto a = directory.filePath("a.jsonl");
+    const auto b = directory.filePath("b.ndjson");
+    std::ofstream{a.toStdString()}
+        << R"({"event":{"ts":"2026-10-20T11:00:00.250+02:00"},"severity":"INFO","service":"api","msg":"First","trace_id":"trace-1","request_id":"req-1"})"
+        << '\n'
+        << R"({"event":{"ts":"2026-10-20T09:00:00.300Z"},"severity":"INFO","service":"api","msg":"Different trace","trace_id":"trace-2","request_id":"req-1"})"
+        << '\n';
+    std::ofstream{b.toStdString()}
+        << R"({"event":{"ts":"2026-10-20T04:00:00.5-05:00"},"severity":"ERROR","service":"worker","msg":"Second","trace_id":"trace-1","request_id":"req-2"})"
+        << '\n';
+
+    MainWindow window;
+    window.show();
+    QTimer::singleShot(0, &window, [&] {
+      auto* dialog = window.findChild<QDialog*>();
+      dialog->findChild<QLineEdit*>("jsonTimestampPath")->setText("event.ts");
+      dialog->findChild<QLineEdit*>("jsonSeverityPath")->setText("severity");
+      dialog->findChild<QLineEdit*>("jsonSourcePath")->setText("service");
+      dialog->findChild<QLineEdit*>("jsonMessagePath")->setText("msg");
+      dialog->findChild<QDialogButtonBox*>()->button(QDialogButtonBox::Ok)->click();
+    });
+    window.findChild<QPushButton*>("jsonFields")->click();
+    window.importFiles({b, a});
+    QTRY_VERIFY_WITH_TIMEOUT(!window.busy(), 10000);
+    auto* table = window.findChild<QTableView*>("logTable");
+    QCOMPARE(table->model()->rowCount(), 3);
+    window.findChild<QListWidget*>("navigation")->setCurrentRow(1);
+    window.findChild<QPushButton*>("timelineBucket0")->click();
+    QCOMPARE(table->model()->rowCount(), 3);
+    table->setCurrentIndex(table->model()->index(0, 0));
+    window.findChild<QPushButton*>("showRequest")->click();
+    QCOMPARE(table->model()->rowCount(), 2);
+    QCOMPARE(table->model()->index(1, 3).data().toString(), QString{"Different trace"});
+    window.findChild<QPushButton*>("showTrace")->click();
+    QCOMPARE(table->model()->rowCount(), 2);
+    QCOMPARE(table->model()->index(0, 0).data().toString(), QString{"2026-10-20T09:00:00.25Z"});
+    QCOMPARE(table->model()->index(1, 2).data().toString(), QString{"worker"});
+
+    const auto path = directory.filePath("visible.json");
+    window.exportTo(path, true);
+    QTRY_VERIFY_WITH_TIMEOUT(!window.busy(), 10000);
+    QFile exported{path};
+    QVERIFY(exported.open(QIODevice::ReadOnly));
+    const auto report = QJsonDocument::fromJson(exported.readAll()).object();
+    QCOMPARE(report.value("scope").toString(), QString{"visible"});
+    QCOMPARE(report.value("filters").toObject().value("trace_id").toString(), QString{"trace-1"});
+    const auto entries = report.value("entries").toArray();
+    QCOMPARE(entries.size(), 2);
+    QCOMPARE(entries[1].toObject().value("path").toString(), b);
+    QCOMPARE(entries[1].toObject().value("timestamp").toString(),
+             QString{"2026-10-20T09:00:00.5Z"});
+  }
+  void reconfiguresRuleForCurrentSession() {
+    MainWindow window;
+    window.show();
+    window.importFiles({LOGINSIGHT_SAMPLE_PATH});
+    QTRY_VERIFY_WITH_TIMEOUT(!window.busy(), 10000);
+    auto* alerts = window.findChild<QListWidget*>("burstAlerts");
+    QCOMPARE(alerts->count(), 0);
+    QTimer::singleShot(0, &window, [&] {
+      auto* dialog = window.findChild<QDialog*>();
+      dialog->findChild<QSpinBox*>("burstThreshold")->setValue(2);
+      dialog->findChild<QSpinBox*>("burstWindow")->setValue(14);
+      dialog->findChild<QComboBox*>("burstSeverity")->setCurrentText("Error");
+      dialog->findChild<QLineEdit*>("burstSource")->setText("worker");
+      dialog->findChild<QDialogButtonBox*>()->button(QDialogButtonBox::Ok)->click();
+    });
+    window.findChild<QPushButton*>("alertRule")->click();
+    QCOMPARE(alerts->count(), 1);
+    alerts->setCurrentRow(0);
+    window.findChild<QPushButton*>("openBurst")->click();
+    auto* table = window.findChild<QTableView*>("logTable");
+    QCOMPARE(table->model()->rowCount(), 2);
+    QCOMPARE(table->model()->index(0, 2).data().toString(), QString{"worker"});
+  }
+  void opensExactErrorBurstAcrossFiles() {
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const auto first = directory.filePath("one.log");
+    const auto second = directory.filePath("two.log");
+    std::ofstream{first.toStdString()} << "2026-10-20 09:01:10 ERROR worker fifth\n"
+                                          "2026-10-20 08:59:49 ERROR worker too early\n"
+                                          "2026-10-20 09:00:10 ERROR worker first\n"
+                                          "2026-10-20 09:00:20 WARNING worker excluded\n"
+                                          "2026-10-20 09:00:30 ERROR other excluded\n";
+    std::ofstream{second.toStdString()} << "2026-10-20 09:00:40 CRITICAL worker third\n"
+                                           "2026-10-20 09:00:50 ERROR worker fourth\n"
+                                           "2026-10-20 09:00:30 ERROR worker second\n"
+                                           "2026-10-20 09:01:11 ERROR worker no duplicate burst\n";
+
+    MainWindow window;
+    window.show();
+    window.importFiles({first, second});
+    QTRY_VERIFY_WITH_TIMEOUT(!window.busy(), 10000);
+    auto* alerts = window.findChild<QListWidget*>("burstAlerts");
+    QCOMPARE(alerts->count(), 1);
+    alerts->setCurrentRow(0);
+    window.findChild<QPushButton*>("openBurst")->click();
+    auto* table = window.findChild<QTableView*>("logTable");
+    QCOMPARE(table->model()->rowCount(), 5);
+    QCOMPARE(table->model()->index(0, 3).data().toString(), QString{"first"});
+    QCOMPARE(table->model()->index(4, 3).data().toString(), QString{"fifth"});
+  }
+  void cancellationAndOversizeKeepPriorSession() {
+    MainWindow window;
+    window.show();
+    window.importFiles({LOGINSIGHT_SAMPLE_PATH});
+    QTRY_VERIFY_WITH_TIMEOUT(!window.busy(), 10000);
+    QCOMPARE(window.logModel()->rowCount(), 13);
+
+    window.importFiles({LOGINSIGHT_SAMPLE_PATH});
+    auto* cancel = window.findChild<QPushButton*>("cancelImport");
+    QVERIFY(cancel->isVisible());
+    cancel->click();
+    QTRY_VERIFY_WITH_TIMEOUT(!window.busy(), 10000);
+    auto* status = window.findChild<QLabel*>("statusText");
+    QVERIFY(status->text().contains("Import cancelled"));
+    QCOMPARE(window.logModel()->rowCount(), 13);
+
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const auto oversized = directory.filePath("oversized.log");
+    QFile file{oversized};
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    QVERIFY(file.resize(static_cast<qint64>(loginsight::parsers::ImportBudget::maxBytes) + 1));
+    file.close();
+    window.importFiles({LOGINSIGHT_SAMPLE_PATH, oversized});
+    QTRY_VERIFY_WITH_TIMEOUT(!window.busy(), 10000);
+    QVERIFY(status->text().contains("32 MiB"));
+    QCOMPARE(window.logModel()->rowCount(), 13);
   }
   void sampleActionExportAndBusyClose() {
     MainWindow window;

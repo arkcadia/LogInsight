@@ -1,5 +1,6 @@
 #pragma once
 
+#include "loginsight/parsers/json_parser_config.hpp"
 #include "loginsight/parsers/log_parser.hpp"
 
 #include <filesystem>
@@ -17,6 +18,6 @@ private:
   std::vector<std::unique_ptr<ILogParser>> parsers_;
 };
 
-[[nodiscard]] ParserRegistry default_parser_registry();
+[[nodiscard]] ParserRegistry default_parser_registry(JsonParserConfig config = {});
 
 } // namespace loginsight::parsers

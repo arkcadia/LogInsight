@@ -1,4 +1,4 @@
-add_library(loginsight_rules STATIC src/rules_module.cpp)
+add_library(loginsight_rules STATIC src/rules_module.cpp src/error_burst.cpp)
 add_library(LogInsight::rules ALIAS loginsight_rules)
 
 target_include_directories(

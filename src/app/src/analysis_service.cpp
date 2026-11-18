@@ -12,14 +12,17 @@
 #include <system_error>
 
 namespace loginsight::app {
-AnalysisService::AnalysisService() : registry_(parsers::default_parser_registry()) {}
+AnalysisService::AnalysisService(parsers::JsonParserConfig config)
+    : registry_(parsers::default_parser_registry(std::move(config))) {}
 
-AnalysisResult AnalysisService::analyze(const std::filesystem::path& path) const {
-  return analyze_file(path, parsers::FileImportService{registry_});
+AnalysisResult AnalysisService::analyze(const std::filesystem::path& path,
+                                        parsers::ImportBudget* budget) const {
+  return analyze_file(path, parsers::FileImportService{registry_}, budget);
 }
 
 AnalysisResult analyze_file(const std::filesystem::path& path,
-                            const parsers::FileImportService& importer) {
+                            const parsers::FileImportService& importer,
+                            parsers::ImportBudget* budget) {
   AnalysisResult result{.path = path,
                         .status = AnalysisStatus::io_failure,
                         .parsed = {},
@@ -33,7 +36,7 @@ AnalysisResult analyze_file(const std::filesystem::path& path,
   } else if (error || !is_regular_file(status)) {
     result.diagnostic = "unable to open file";
   } else {
-    auto imported = importer.importFile(path);
+    auto imported = importer.importFile(path, budget);
     if (!imported.isSupported()) {
       result.status = AnalysisStatus::unsupported_format;
       result.diagnostic = "unsupported file format";
@@ -62,7 +65,18 @@ std::string format_timestamp(core::LogTimestamp timestamp) {
   out << std::setfill('0') << std::setw(4) << int(date.year()) << '-' << std::setw(2)
       << unsigned(date.month()) << '-' << std::setw(2) << unsigned(date.day()) << 'T'
       << std::setw(2) << time.hours().count() << ':' << std::setw(2) << time.minutes().count()
-      << ':' << std::setw(2) << time.seconds().count() << 'Z';
+      << ':' << std::setw(2) << time.seconds().count();
+  using namespace std::chrono;
+  auto fraction = duration_cast<nanoseconds>(timestamp.time_since_epoch() % seconds{1});
+  if (fraction < nanoseconds::zero())
+    fraction += seconds{1};
+  if (fraction != nanoseconds::zero()) {
+    auto digits = std::to_string((seconds{1} + fraction).count()).substr(1);
+    while (digits.back() == '0')
+      digits.pop_back();
+    out << '.' << digits;
+  }
+  out << 'Z';
   return out.str();
 }
 
@@ -72,6 +86,15 @@ void emit(std::ostream& out, const Json& value) {
   // Display/export invalid UTF-8 as replacement characters rather than aborting an import.
   out << value.dump(-1, ' ', false, Json::error_handler_t::replace);
 }
+Json entry_json(const core::LogEntry& entry) {
+  return {{"timestamp", format_timestamp(entry.timestamp)},
+          {"level", core::to_string(entry.level)},
+          {"source", entry.source.name},
+          {"message", entry.message},
+          {"raw", entry.rawContent},
+          {"attributes", entry.attributes}};
+}
+
 struct TemporaryDirectory {
   std::filesystem::path path;
   ~TemporaryDirectory() {
@@ -109,12 +132,7 @@ void write_json_report(std::ostream& out, std::span<const AnalysisResult> result
       if (!first)
         out << ',';
       first = false;
-      emit(out, Json{{"timestamp", format_timestamp(e.timestamp)},
-                     {"level", core::to_string(e.level)},
-                     {"source", e.source.name},
-                     {"message", e.message},
-                     {"raw", e.rawContent},
-                     {"attributes", e.attributes}});
+      emit(out, entry_json(e));
     }
     out << "],\"malformed_records\":[";
     first = true;
@@ -131,8 +149,8 @@ void write_json_report(std::ostream& out, std::span<const AnalysisResult> result
     throw std::runtime_error("unable to write report");
 }
 
-void save_json_report(const std::filesystem::path& destination,
-                      std::span<const AnalysisResult> results) {
+namespace {
+void save_report(const std::filesystem::path& destination, const auto& write) {
   if (std::filesystem::exists(destination)) {
     throw std::runtime_error("report destination already exists");
   }
@@ -152,11 +170,37 @@ void save_json_report(const std::filesystem::path& destination,
   const TemporaryDirectory guard{temp};
   const auto staged = temp / "report.json";
   std::ofstream out{staged, std::ios::binary};
-  write_json_report(out, results);
+  write(out);
   out.close();
   if (!out)
     throw std::runtime_error("unable to close report");
   // Hard-link creation atomically fails if another process created the destination.
   std::filesystem::create_hard_link(staged, destination);
+}
+} // namespace
+
+void save_json_report(const std::filesystem::path& destination,
+                      std::span<const AnalysisResult> results) {
+  save_report(destination, [&](auto& out) { write_json_report(out, results); });
+}
+
+void save_visible_report(const std::filesystem::path& destination,
+                         std::span<const core::LogEntry* const> entries,
+                         const core::LogAttributes& filters) {
+  save_report(destination, [&](auto& out) {
+    out << "{\"schema_version\":1,\"scope\":\"visible\",\"filters\":";
+    emit(out, filters);
+    out << ",\"entries\":[";
+    bool first = true;
+    for (const auto* entry : entries) {
+      if (!first)
+        out << ',';
+      first = false;
+      auto value = entry_json(*entry);
+      value["path"] = entry->source.file_path.value_or("");
+      emit(out, value);
+    }
+    out << "]}\n";
+  });
 }
 } // namespace loginsight::app

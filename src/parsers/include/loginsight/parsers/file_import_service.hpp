@@ -7,6 +7,7 @@
 namespace loginsight::parsers {
 
 class ParserRegistry;
+struct ImportBudget;
 
 enum class FileImportStatus {
   completed,
@@ -26,7 +27,8 @@ public:
   explicit FileImportService(const ParserRegistry& registry) noexcept;
   FileImportService(const ParserRegistry&&) = delete; // Never borrow a temporary registry.
 
-  [[nodiscard]] FileImportResult importFile(const std::filesystem::path& path) const;
+  [[nodiscard]] FileImportResult importFile(const std::filesystem::path& path,
+                                            ImportBudget* budget = nullptr) const;
 
 private:
   const ParserRegistry& registry_;

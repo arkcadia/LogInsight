@@ -163,7 +163,8 @@ bool PlainTextLogParser::canParse(const std::filesystem::path& path) const {
   return ascii_equal_ignore_case(extension, ".log") || ascii_equal_ignore_case(extension, ".txt");
 }
 
-ParseResult PlainTextLogParser::parse(const std::filesystem::path& path) const {
+ParseResult PlainTextLogParser::parse(const std::filesystem::path& path,
+                                      ImportBudget* budget) const {
   std::ifstream file{path};
   if (!file.is_open()) {
     return ParseResult{
@@ -176,15 +177,15 @@ ParseResult PlainTextLogParser::parse(const std::filesystem::path& path) const {
     };
   }
 
-  return parse(file);
+  return parse(file, budget);
 }
 
-ParseResult PlainTextLogParser::parse(std::istream& input) const {
+ParseResult PlainTextLogParser::parse(std::istream& input, ImportBudget* budget) const {
   ParseResult result;
   std::string line;
   std::size_t line_number = 0;
 
-  while (std::getline(input, line)) {
+  while (budget ? budget->readLine(input, line) : static_cast<bool>(std::getline(input, line))) {
     ++line_number;
 
     if (!has_non_space(line)) {

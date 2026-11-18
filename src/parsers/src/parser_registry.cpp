@@ -27,10 +27,10 @@ const ILogParser* ParserRegistry::findParser(const std::filesystem::path& path) 
   return nullptr;
 }
 
-ParserRegistry default_parser_registry() {
+ParserRegistry default_parser_registry(JsonParserConfig config) {
   ParserRegistry registry;
   if (!registry.registerParser(std::make_unique<PlainTextLogParser>()) ||
-      !registry.registerParser(std::make_unique<JsonLinesLogParser>()))
+      !registry.registerParser(std::make_unique<JsonLinesLogParser>(std::move(config))))
     throw std::runtime_error("unable to configure parser registry");
   return registry;
 }

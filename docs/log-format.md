@@ -77,10 +77,13 @@ offsets are accepted in plain-text records. The standalone timestamp helper also
 
 The JSON Lines parser accepts `.jsonl` and `.ndjson`. Each nonblank line is a JSON object
 with string fields `timestamp`, `level`, `source` and `message` by default. Timestamps use
-the same UTC calendar rules as plain text and also accept a `Z` suffix. JSON Lines accepts
+the same calendar rules as plain text, with up to nine fractional digits and a `Z` suffix
+or a numeric timezone offset (`+HH:MM` or `-HH:MM`). JSON Lines accepts
 the core severity aliases and rejects the explicit unknown level. The C++ parser API accepts
 validated dot-separated field paths and can use the filename stem when no source field is
-configured. The desktop and CLI use the default field names.
+configured. The desktop exposes the mapping for future imports. The CLI uses the default
+field names. Optional top-level string fields `trace_id` and `request_id` are stored as
+attributes for exact matching in Log Explorer.
 
 ## Import results and reports
 

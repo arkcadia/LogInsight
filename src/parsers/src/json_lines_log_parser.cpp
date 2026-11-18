@@ -39,7 +39,8 @@ bool JsonLinesLogParser::canParse(const std::filesystem::path& path) const {
   return extension == ".jsonl" || extension == ".ndjson";
 }
 
-ParseResult JsonLinesLogParser::parse(const std::filesystem::path& path) const {
+ParseResult JsonLinesLogParser::parse(const std::filesystem::path& path,
+                                      ImportBudget* budget) const {
   std::ifstream input{path};
   if (!input)
     return {.errors = {{0U, path.string(), "unable to open file"}}};
@@ -47,7 +48,7 @@ ParseResult JsonLinesLogParser::parse(const std::filesystem::path& path) const {
   ParseResult result;
   std::string line;
   std::size_t line_number{};
-  while (std::getline(input, line)) {
+  while (budget ? budget->readLine(input, line) : static_cast<bool>(std::getline(input, line))) {
     ++line_number;
     if (line.find_first_not_of(" \t\r") == std::string::npos)
       continue;
@@ -60,7 +61,7 @@ ParseResult JsonLinesLogParser::parse(const std::filesystem::path& path) const {
     const auto* message = find_string(record, config_.messageFieldPath);
     const auto* source =
         config_.sourceFieldPath ? find_string(record, *config_.sourceFieldPath) : nullptr;
-    const auto timestamp = timestamp_text ? parse_timestamp(*timestamp_text) : std::nullopt;
+    const auto timestamp = timestamp_text ? parse_timestamp(*timestamp_text, true) : std::nullopt;
     const auto level =
         core::log_level_from_string(level_text ? std::string_view{*level_text} : std::string_view{})
             .value_or(core::LogLevel::unknown);
@@ -82,12 +83,18 @@ ParseResult JsonLinesLogParser::parse(const std::filesystem::path& path) const {
       result.errors.push_back({line_number, std::move(line), error});
       continue;
     }
+    core::LogAttributes attributes;
+    for (const auto* key : {"trace_id", "request_id"}) {
+      if (const auto* id = find_string(record, key); id && !id->empty())
+        attributes.emplace(key, *id);
+    }
     result.entries.push_back(
         {.timestamp = *timestamp,
          .level = level,
          .source = core::LogSource{.name = source ? *source : path.stem().string()},
          .message = *message,
-         .rawContent = std::move(line)});
+         .rawContent = std::move(line),
+         .attributes = std::move(attributes)});
   }
   if (input.bad() || (input.fail() && !input.eof()))
     result.errors.push_back({0U, {}, "unable to read input"});

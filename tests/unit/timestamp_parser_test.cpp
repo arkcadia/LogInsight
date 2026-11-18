@@ -82,3 +82,19 @@ TEST(TimestampParserTest, RejectsDatesOutsideSystemClockRangeWithoutOverflow) {
   EXPECT_TRUE(parse_timestamp("2000-02-29T00:00:00").has_value());
   EXPECT_EQ(parse_timestamp("1900-02-29T00:00:00"), std::nullopt);
 }
+
+TEST(TimestampParserTest, ExtendedFormatNormalizesOffsetsAndValidatesFractions) {
+  using namespace std::chrono;
+  EXPECT_EQ(parse_timestamp("1970-01-01T00:59:59.25+01:00", true),
+            system_clock::time_point{milliseconds{-750}});
+  EXPECT_EQ(parse_timestamp("1969-12-31T23:30:00.001-00:30", true),
+            system_clock::time_point{milliseconds{1}});
+  for (const auto* invalid : {"2026-07-12T15:21:04.Z", "2026-07-12T15:21:04.1234567890Z",
+                              "2026-07-12T15:21:04+24:00", "2026-07-12T15:21:04-00:60"})
+    EXPECT_EQ(parse_timestamp(invalid, true), std::nullopt) << invalid;
+  if constexpr (system_clock::period::den == 1'000'000'000 && sizeof(system_clock::rep) == 8) {
+    EXPECT_EQ(parse_timestamp("1677-09-21T00:12:43.145224192Z", true),
+              system_clock::time_point::min());
+    EXPECT_EQ(parse_timestamp("2262-04-11T23:47:16.854775808Z", true), std::nullopt);
+  }
+}

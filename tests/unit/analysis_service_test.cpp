@@ -72,3 +72,42 @@ TEST(AnalysisServiceTest, FormatsPreEpochTimestampInUtc) {
   EXPECT_EQ(format_timestamp(loginsight::core::LogTimestamp{std::chrono::seconds{-1}}),
             "1969-12-31T23:59:59Z");
 }
+
+TEST(ImportBudgetTest, CountsBlankLongAndUnterminatedLinesAndChecksCancellation) {
+  const std::string longLine(9000, 'x');
+  std::istringstream input{"\n" + longLine + "\r\nlast"};
+  loginsight::parsers::ImportBudget budget{};
+  std::string line;
+  ASSERT_TRUE(budget.readLine(input, line));
+  EXPECT_TRUE(line.empty());
+  ASSERT_TRUE(budget.readLine(input, line));
+  EXPECT_EQ(line, longLine + "\r");
+  ASSERT_TRUE(budget.readLine(input, line));
+  EXPECT_EQ(line, "last");
+  EXPECT_FALSE(budget.readLine(input, line));
+  EXPECT_EQ(budget.lines, 3U);
+  EXPECT_EQ(budget.bytes, longLine.size() + 7U);
+
+  std::stop_source stop;
+  budget.stop = stop.get_token();
+  stop.request_stop();
+  EXPECT_THROW(budget.readLine(input, line), std::runtime_error);
+}
+
+TEST(ImportBudgetTest, RejectsRecordsAndBatchesThatExceedLimits) {
+  using loginsight::parsers::ImportBudget;
+  std::string line;
+  ImportBudget budget{};
+  std::istringstream oversized{std::string(ImportBudget::maxLineBytes + 1, 'x')};
+  EXPECT_THROW(budget.readLine(oversized, line), std::runtime_error);
+
+  budget = ImportBudget{};
+  budget.bytes = ImportBudget::maxBytes - 1;
+  std::istringstream excessBytes{"x\n"};
+  EXPECT_THROW(budget.readLine(excessBytes, line), std::runtime_error);
+
+  budget = ImportBudget{};
+  budget.lines = ImportBudget::maxLines;
+  std::istringstream excessLine{"\n"};
+  EXPECT_THROW(budget.readLine(excessLine, line), std::runtime_error);
+}

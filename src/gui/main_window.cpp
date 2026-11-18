@@ -3,18 +3,23 @@
 #include <QApplication>
 #include <QCloseEvent>
 #include <QComboBox>
+#include <QDialog>
+#include <QDialogButtonBox>
 #include <QDragEnterEvent>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QFormLayout>
 #include <QHeaderView>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QMimeData>
 #include <QProgressBar>
+#include <QPromise>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QSignalBlocker>
+#include <QSpinBox>
 #include <QSplitter>
 #include <QStackedWidget>
 #include <QStatusBar>
@@ -97,6 +102,10 @@ MainWindow::MainWindow() {
   export_->setEnabled(false);
   header->addWidget(samples_);
   header->addWidget(import_);
+  mapping_ = new QPushButton{"JSON fields"};
+  mapping_->setObjectName("jsonFields");
+  header->addWidget(mapping_);
+  connect(mapping_, &QPushButton::clicked, this, &MainWindow::configureJson);
   header->addWidget(export_);
   outer->addLayout(header);
   auto* body = new QHBoxLayout;
@@ -105,7 +114,7 @@ MainWindow::MainWindow() {
   sidebar->setFixedWidth(186);
   auto* side = new QVBoxLayout(sidebar);
   side->setContentsMargins(0, 0, 0, 12);
-  auto* navigation = new QListWidget;
+  auto* navigation = navigation_ = new QListWidget;
   navigation->addItems({"Overview", "Log Explorer"});
   navigation->setCurrentRow(0);
   navigation->setObjectName("navigation");
@@ -172,6 +181,33 @@ MainWindow::MainWindow() {
     dist->addLayout(row);
   }
   dashboard->addWidget(distribution);
+  dashboard->addWidget(label("Burst alerts", "font-size: 16px; font-weight: 600;"));
+  ruleSettings_ = new QPushButton{"Alert rule"};
+  ruleSettings_->setObjectName("alertRule");
+  dashboard->addWidget(ruleSettings_, 0, Qt::AlignLeft);
+  ruleDescription_ = label("5 events at Error or higher in 60 seconds per source.");
+  ruleDescription_->setTextFormat(Qt::PlainText);
+  ruleDescription_->setWordWrap(true);
+  dashboard->addWidget(ruleDescription_);
+  connect(ruleSettings_, &QPushButton::clicked, this, &MainWindow::configureRule);
+  alerts_ = new QListWidget;
+  alerts_->setObjectName("burstAlerts");
+  alerts_->setAccessibleName("Burst alerts");
+  alerts_->setUniformItemSizes(true);
+  alerts_->setMaximumHeight(140);
+  noBursts_ = label("Import logs to check for error bursts.", "color: #acafc2;");
+  dashboard->addWidget(noBursts_);
+  alerts_->hide();
+  dashboard->addWidget(alerts_);
+  auto* openBurst = new QPushButton{"Open matching records"};
+  openBurst->setObjectName("openBurst");
+  openBurst->setEnabled(false);
+  dashboard->addWidget(openBurst, 0, Qt::AlignLeft);
+  connect(alerts_, &QListWidget::currentRowChanged, this,
+          [openBurst](int row) { openBurst->setEnabled(row >= 0); });
+  connect(openBurst, &QPushButton::clicked, this, [this] { showBurst(alerts_->currentRow()); });
+  connect(alerts_, &QListWidget::itemActivated, this,
+          [this](QListWidgetItem* item) { showBurst(alerts_->row(item)); });
   dashboard->addWidget(label("Import diagnostics", "font-size: 16px; font-weight: 600;"));
   diagnostics_ = textPanel("No files imported. Select Load Sample Logs for a guided first "
                            "session.\nValid records and malformed records are kept separately.");
@@ -189,6 +225,21 @@ MainWindow::MainWindow() {
   explorerCount_ =
       label("No entries yet. Import logs to explore their contents.", "color: #acafc2;");
   logs->addWidget(explorerCount_);
+  auto* actions = new QHBoxLayout;
+  clearBurst_ = new QPushButton{"Clear drill-down"};
+  exportVisible_ = new QPushButton{"Export visible records"};
+  exportVisible_->setEnabled(false);
+  actions->addWidget(clearBurst_);
+  actions->addStretch();
+  actions->addWidget(exportVisible_);
+  logs->addLayout(actions);
+  connect(exportVisible_, &QPushButton::clicked, this, [this] { exportReport(true); });
+  clearBurst_->hide();
+  connect(clearBurst_, &QPushButton::clicked, this, [this] {
+    proxy_->setBurst({});
+    proxy_->setCorrelation({}, {});
+    clearBurst_->hide();
+  });
   auto* filters = new QHBoxLayout;
   search_ = new QLineEdit;
   search_->setPlaceholderText("Search message text…");
@@ -294,6 +345,19 @@ MainWindow::MainWindow() {
   splitter->addWidget(details_);
   splitter->setSizes({390, 180});
   logs->addWidget(splitter, 1);
+  auto* correlations = new QHBoxLayout;
+  trace_ = new QPushButton{"Show trace events"};
+  request_ = new QPushButton{"Show request events"};
+  trace_->setObjectName("showTrace");
+  request_->setObjectName("showRequest");
+  for (auto* button : {trace_, request_}) {
+    button->hide();
+    correlations->addWidget(button);
+  }
+  correlations->addStretch();
+  logs->addLayout(correlations);
+  connect(trace_, &QPushButton::clicked, this, [this] { showCorrelation("trace_id"); });
+  connect(request_, &QPushButton::clicked, this, [this] { showCorrelation("request_id"); });
   pages_->addWidget(explorer);
   status_ = label("Ready");
   status_->setObjectName("statusText");
@@ -304,7 +368,19 @@ MainWindow::MainWindow() {
   progress_->setRange(0, 0);
   progress_->setFixedWidth(110);
   progress_->hide();
+  progress_->setAccessibleName("Import progress");
   statusBar()->addPermanentWidget(progress_);
+  cancelImport_ = new QPushButton{"Cancel import"};
+  cancelImport_->setObjectName("cancelImport");
+  cancelImport_->hide();
+  statusBar()->addPermanentWidget(cancelImport_);
+  connect(cancelImport_, &QPushButton::clicked, this, [this] {
+    importStop_.request_stop();
+    cancelImport_->setEnabled(false);
+    status_->setText("Cancelling import…");
+  });
+  connect(&importer_, &QFutureWatcher<ImportOutcome>::progressValueChanged, progress_,
+          &QProgressBar::setValue);
   session_ = label("Files: 0    Entries: 0");
   statusBar()->addPermanentWidget(session_);
   connect(navigation, &QListWidget::currentRowChanged, pages_, &QStackedWidget::setCurrentIndex);
@@ -315,7 +391,7 @@ MainWindow::MainWindow() {
                                       "Log files (*.log *.txt *.jsonl *.ndjson);;All files (*)");
     importFiles(paths);
   });
-  connect(export_, &QPushButton::clicked, this, &MainWindow::exportReport);
+  connect(export_, &QPushButton::clicked, this, [this] { exportReport(); });
   auto* debounce = new QTimer{this};
   debounce->setSingleShot(true);
   debounce->setInterval(180);
@@ -330,6 +406,7 @@ MainWindow::MainWindow() {
     explorerCount_->setText(QString("%1 of %2 entries · select a row for the original record")
                                 .arg(proxy_->rowCount())
                                 .arg(model_->rowCount()));
+    exportVisible_->setEnabled(!busy_ && proxy_->rowCount() > 0);
     showDetails(table_->currentIndex());
   };
   connect(proxy_, &QAbstractItemModel::modelReset, this, updateCount);
@@ -338,9 +415,18 @@ MainWindow::MainWindow() {
   connect(proxy_, &QAbstractItemModel::rowsRemoved, this, updateCount);
   connect(table_->selectionModel(), &QItemSelectionModel::currentRowChanged, this,
           [this](const QModelIndex& index) { showDetails(index); });
-  connect(&importer_, &QFutureWatcher<std::shared_ptr<const Dataset>>::finished, this, [this] {
+  connect(&importer_, &QFutureWatcher<ImportOutcome>::finished, this, [this] {
+    cancelImport_->hide();
+    if (importStop_.stop_requested()) {
+      setBusy(false, "Import cancelled — current session kept.");
+      return;
+    }
     try {
-      auto next = importer_.result();
+      auto [next, error] = importer_.result();
+      if (!next) {
+        setBusy(false, "Import failed: " + error + ". Current session kept.");
+        return;
+      }
       if (next->importedFiles == 0U) {
         diagnostics_->setPlainText(next->diagnostics);
         setBusy(false, "Import failed — current session kept. See Overview diagnostics.");
@@ -368,6 +454,9 @@ MainWindow::MainWindow() {
 void MainWindow::setBusy(bool busy, const QString& text) {
   busy_ = busy;
   import_->setEnabled(!busy);
+  mapping_->setEnabled(!busy);
+  ruleSettings_->setEnabled(!busy);
+  exportVisible_->setEnabled(!busy && proxy_->rowCount() > 0);
   samples_->setEnabled(!busy);
   export_->setEnabled(!busy && dataset_ && dataset_->importedFiles > 0U);
   progress_->setVisible(busy);
@@ -381,21 +470,37 @@ void MainWindow::importFiles(const QStringList& paths) {
   unique.removeDuplicates();
   setBusy(true, QString("Importing %1 file(s)… You can keep exploring the current session.")
                     .arg(unique.size()));
-  importer_.setFuture(QtConcurrent::run([unique] { return load_files(unique); }));
+  importStop_ = std::stop_source{};
+  progress_->setRange(0, 100);
+  progress_->setValue(0);
+  cancelImport_->setEnabled(true);
+  cancelImport_->show();
+  importer_.setFuture(
+      QtConcurrent::run([unique, stop = importStop_.get_token(), config = jsonConfig_,
+                         rule = burstRule_](QPromise<ImportOutcome>& promise) {
+        promise.setProgressRange(0, 100);
+        try {
+          const auto progress = [&promise, last = -1](int value) mutable {
+            if (value != last) {
+              last = value;
+              promise.setProgressValue(value);
+            }
+          };
+          promise.addResult(ImportOutcome{load_files(unique, stop, progress, config, rule), {}});
+        } catch (const std::exception& error) {
+          promise.addResult(ImportOutcome{nullptr, QString::fromUtf8(error.what())});
+        }
+      }));
 }
 void MainWindow::loadSamples() {
   importFiles({QApplication::applicationDirPath() + "/samples/atlas.log"});
 }
 void MainWindow::refresh() {
-  from_->clear();
-  through_->clear();
-  applyTimeRange();
+  resetExplorerFilters();
   model_->setDataset(dataset_);
   refreshTimeline();
-  search_->clear();
-  proxy_->setSearch({});
-  severity_->setCurrentIndex(0);
-  proxy_->setSeverity(-1);
+  bursts_ = dataset_->bursts;
+  refreshBursts();
   {
     const QSignalBlocker blocker{source_};
     source_->clear();
@@ -403,7 +508,7 @@ void MainWindow::refresh() {
     source_->addItems(dataset_->sources);
   }
   proxy_->setSource({});
-  details_->clear();
+  showDetails({});
   const std::array values{dataset_->entries.size(), dataset_->counts[4] + dataset_->counts[5],
                           dataset_->counts[3], dataset_->malformed};
   for (std::size_t i = 0; i < 4; ++i)
@@ -426,11 +531,158 @@ void MainWindow::refresh() {
                         .arg(dataset_->importedFiles)
                         .arg(dataset_->entries.size()));
 }
+void MainWindow::configureJson() {
+  QDialog dialog{this};
+  dialog.setWindowTitle("JSON Lines fields");
+  QFormLayout layout{&dialog};
+  QLineEdit timestamp{QString::fromStdString(jsonConfig_.timestampFieldPath)};
+  QLineEdit severity{QString::fromStdString(jsonConfig_.levelFieldPath)};
+  QLineEdit source{QString::fromStdString(jsonConfig_.sourceFieldPath.value_or(""))};
+  QLineEdit message{QString::fromStdString(jsonConfig_.messageFieldPath)};
+  timestamp.setObjectName("jsonTimestampPath");
+  severity.setObjectName("jsonSeverityPath");
+  source.setObjectName("jsonSourcePath");
+  message.setObjectName("jsonMessagePath");
+  source.setPlaceholderText("Use filename if blank");
+  layout.addRow("&Timestamp", &timestamp);
+  layout.addRow("&Severity", &severity);
+  layout.addRow("So&urce", &source);
+  layout.addRow("&Message", &message);
+  QLabel help{"Use dots for nested fields. Changes apply to the next import."};
+  layout.addRow(&help);
+  QLabel error{"Use distinct field paths without empty segments. Only Source can be blank."};
+  error.setWordWrap(true);
+  error.hide();
+  layout.addRow(&error);
+  QDialogButtonBox buttons{QDialogButtonBox::Ok | QDialogButtonBox::Cancel};
+  layout.addRow(&buttons);
+  connect(&buttons, &QDialogButtonBox::accepted, &dialog, [&] {
+    const auto sourcePath = source.text().trimmed().toStdString();
+    parsers::JsonParserConfig config{
+        .timestampFieldPath = timestamp.text().trimmed().toStdString(),
+        .levelFieldPath = severity.text().trimmed().toStdString(),
+        .sourceFieldPath = sourcePath.empty() ? std::nullopt : std::optional{sourcePath},
+        .messageFieldPath = message.text().trimmed().toStdString()};
+    if (parsers::validate_json_parser_config(config)) {
+      error.show();
+      return;
+    }
+    jsonConfig_ = std::move(config);
+    dialog.accept();
+  });
+  connect(&buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+  dialog.exec();
+}
+
+void MainWindow::configureRule() {
+  QDialog dialog{this};
+  dialog.setWindowTitle("Burst alert rule");
+  QFormLayout layout{&dialog};
+  QSpinBox threshold;
+  threshold.setObjectName("burstThreshold");
+  threshold.setRange(2, static_cast<int>(parsers::ImportBudget::maxLines));
+  threshold.setValue(static_cast<int>(burstRule_.threshold));
+  QSpinBox seconds;
+  seconds.setObjectName("burstWindow");
+  seconds.setRange(1, 86400);
+  seconds.setValue(static_cast<int>(burstRule_.window.count()));
+  QComboBox severity;
+  severity.setObjectName("burstSeverity");
+  severity.addItems({"Trace", "Debug", "Info", "Warning", "Error", "Critical"});
+  severity.setCurrentIndex(static_cast<int>(burstRule_.minimumLevel));
+  QLineEdit source{QString::fromStdString(burstRule_.source)};
+  source.setObjectName("burstSource");
+  source.setPlaceholderText("All sources if blank");
+  layout.addRow("&Event count", &threshold);
+  layout.addRow("&Window (seconds)", &seconds);
+  layout.addRow("&Minimum severity", &severity);
+  layout.addRow("&Source (exact match)", &source);
+  QDialogButtonBox buttons{QDialogButtonBox::Ok | QDialogButtonBox::Cancel};
+  layout.addRow(&buttons);
+  connect(&buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+  connect(&buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+  if (dialog.exec() != QDialog::Accepted)
+    return;
+  burstRule_ = {.threshold = static_cast<std::size_t>(threshold.value()),
+                .window = std::chrono::seconds{seconds.value()},
+                .minimumLevel = static_cast<core::LogLevel>(severity.currentIndex()),
+                .source = source.text().toStdString()};
+  if (proxy_->activeFilters().contains("alert")) {
+    proxy_->setBurst({});
+    clearBurst_->hide();
+  }
+  if (dataset_)
+    bursts_ = rules::find_error_bursts(dataset_->entries, burstRule_);
+  refreshBursts();
+}
+
+void MainWindow::refreshBursts() {
+  const auto sources =
+      burstRule_.source.empty()
+          ? QString{"per source"}
+          : QString{"from %1"}.arg(QString::fromStdString(burstRule_.source).left(80));
+  ruleDescription_->setText(
+      QString("%1 events at %2 or higher in %3 seconds %4.")
+          .arg(burstRule_.threshold)
+          .arg(QString::fromStdString(std::string{core::to_string(burstRule_.minimumLevel)}))
+          .arg(burstRule_.window.count())
+          .arg(sources));
+  alerts_->clear();
+  alerts_->setVisible(!bursts_.empty());
+  noBursts_->setText(dataset_ ? "No bursts found."
+                              : "Import logs to check for error bursts.");
+  noBursts_->setVisible(bursts_.empty());
+  for (const auto& burst : bursts_) {
+    alerts_->addItem(
+        QString("%1 · %2 → %3")
+            .arg(QString::fromStdString(burst.front()->source.name).left(80),
+                 QString::fromStdString(app::format_timestamp(burst.front()->timestamp)),
+                 QString::fromStdString(app::format_timestamp(burst.back()->timestamp))));
+  }
+}
+
+void MainWindow::resetExplorerFilters() {
+  proxy_->setBurst({});
+  proxy_->setCorrelation({}, {});
+  clearBurst_->hide();
+  search_->clear();
+  proxy_->setSearch({});
+  severity_->setCurrentIndex(0);
+  source_->setCurrentIndex(0);
+  from_->clear();
+  through_->clear();
+  applyTimeRange();
+}
+
+void MainWindow::showBurst(int index) {
+  if (index < 0 || static_cast<std::size_t>(index) >= bursts_.size())
+    return;
+  resetExplorerFilters();
+  proxy_->setBurst(bursts_[static_cast<std::size_t>(index)], alerts_->item(index)->text());
+  clearBurst_->show();
+  navigation_->setCurrentRow(1);
+  table_->setCurrentIndex(proxy_->index(0, 0));
+  table_->setFocus();
+}
+
+void MainWindow::showCorrelation(const char* key) {
+  const auto* entry = model_->entry(proxy_->mapToSource(table_->currentIndex()).row());
+  if (!entry || !entry->attributes.contains(key))
+    return;
+  const auto id = entry->attributes.at(key);
+  resetExplorerFilters();
+  proxy_->setCorrelation(key, id);
+  table_->sortByColumn(0, Qt::AscendingOrder);
+  clearBurst_->show();
+  table_->setCurrentIndex(proxy_->index(0, 0));
+  table_->setFocus();
+}
+
 void MainWindow::applyTimeRange() {
   const auto fromText = from_->text().trimmed();
   const auto throughText = through_->text().trimmed();
-  const auto from = parsers::parse_timestamp(fromText.toStdString());
-  const auto through = parsers::parse_timestamp(throughText.toStdString());
+  const auto from = parsers::parse_timestamp(fromText.toStdString(), true);
+  const auto through = parsers::parse_timestamp(throughText.toStdString(), true);
   QString error;
   if ((!fromText.isEmpty() && !from) || (!throughText.isEmpty() && !through))
     error = "Enter UTC timestamps as YYYY-MM-DD HH:MM:SS, or leave a bound blank.";
@@ -446,33 +698,41 @@ void MainWindow::refreshTimeline() {
   using namespace std::chrono;
   std::array<int, timelineSize> totals{};
   std::array<int, timelineSize> errors{};
+  std::array<std::pair<core::LogTimestamp, core::LogTimestamp>, timelineSize> ranges{};
   const auto& entries = dataset_->entries;
   const auto bounds =
       std::minmax_element(entries.begin(), entries.end(),
                           [](const auto* a, const auto* b) { return a->timestamp < b->timestamp; });
   const auto first = entries.empty() ? sys_seconds{} : floor<seconds>((*bounds.first)->timestamp);
   const auto last = entries.empty() ? first : floor<seconds>((*bounds.second)->timestamp);
-  timelineStart_->setText(entries.empty() ? QString{}
-                                          : QString::fromStdString(app::format_timestamp(first)));
-  timelineEnd_->setText(entries.empty() ? QString{}
-                                        : QString::fromStdString(app::format_timestamp(last)));
+  timelineStart_->setText(
+      entries.empty() ? QString{}
+                      : QString::fromStdString(app::format_timestamp((*bounds.first)->timestamp)));
+  timelineEnd_->setText(
+      entries.empty() ? QString{}
+                      : QString::fromStdString(app::format_timestamp((*bounds.second)->timestamp)));
   const auto width = seconds{(last - first).count() / static_cast<seconds::rep>(timelineSize) + 1};
   for (const auto* entry : entries) {
     const auto index = static_cast<std::size_t>((floor<seconds>(entry->timestamp) - first) / width);
-    ++totals[index];
+    auto& [start, end] = ranges[index];
+    if (totals[index]++ == 0) {
+      start = end = entry->timestamp;
+    } else {
+      start = std::min(start, entry->timestamp);
+      end = std::max(end, entry->timestamp);
+    }
     if (entry->level == core::LogLevel::error || entry->level == core::LogLevel::critical)
       ++errors[index];
   }
   const auto peak = std::max(1, *std::max_element(errors.begin(), errors.end()));
   for (std::size_t i = 0; i < timelineSize; ++i) {
-    const auto from = first + width * static_cast<seconds::rep>(i);
-    const bool active = !entries.empty() && from <= last;
+    const bool active = totals[i] > 0;
     auto* button = timelineButtons_[i];
     button->setEnabled(active);
-    button->setText(active ? QString::number(totals[i]) : QString{"—"});
+    button->setText(entries.empty() ? QString{"—"} : QString::number(totals[i]));
     QString description;
     if (active) {
-      const auto through = std::min(last, from + width - seconds{1});
+      const auto& [from, through] = ranges[i];
       auto& [startText, endText] = timelineRanges_[i];
       startText = QString::fromStdString(app::format_timestamp(from));
       endText = QString::fromStdString(app::format_timestamp(through));
@@ -491,38 +751,57 @@ void MainWindow::refreshTimeline() {
 void MainWindow::showDetails(const QModelIndex& index) {
   const auto mapped = proxy_->mapToSource(index);
   const auto* entry = model_->entry(mapped.row());
+  trace_->setVisible(entry && entry->attributes.contains("trace_id"));
+  request_->setVisible(entry && entry->attributes.contains("request_id"));
   if (!index.isValid() || !entry) {
     details_->clear();
     return;
   }
+  std::string ids;
+  for (const auto& [key, value] : entry->attributes)
+    ids += "\n" + key + ": " + value;
   details_->setPlainText(QString::fromStdString(
       app::format_timestamp(entry->timestamp) + "   " + std::string{core::to_string(entry->level)} +
-      "   " + entry->source.name + "\nFile: " + entry->source.file_path.value_or("") + "\n\n" +
-      entry->message + "\n\nRAW RECORD\n" + entry->rawContent));
+      "   " + entry->source.name + "\nFile: " + entry->source.file_path.value_or("") + ids +
+      "\n\n" + entry->message + "\n\nRAW RECORD\n" + entry->rawContent));
 }
-void MainWindow::exportReport() {
+void MainWindow::exportReport(bool visibleOnly) {
   if (busy_ || !dataset_)
     return;
-  const auto path = QFileDialog::getSaveFileName(this, "Export session — choose a new file", {},
-                                                 "JSON report (*.json)", nullptr,
-                                                 QFileDialog::DontConfirmOverwrite);
+  const auto path = QFileDialog::getSaveFileName(
+      this, visibleOnly ? "Export visible records" : "Export session", {}, "JSON report (*.json)",
+      nullptr, QFileDialog::DontConfirmOverwrite);
   if (path.isEmpty())
     return;
-  exportTo(path);
+  exportTo(path, visibleOnly);
 }
-void MainWindow::exportTo(const QString& path) {
+void MainWindow::exportTo(const QString& path, bool visibleOnly) {
   if (busy_ || !dataset_ || path.isEmpty())
     return;
   const auto snapshot = dataset_;
-  setBusy(true, "Exporting session…");
-  exporter_.setFuture(QtConcurrent::run([snapshot, path] {
-    try {
-      app::save_json_report(std::filesystem::path{path.toStdString()}, snapshot->files);
-      return QString{"Report saved: "} + path;
-    } catch (const std::exception& error) {
-      return QString{"Export failed: "} + QString::fromUtf8(error.what());
-    }
-  }));
+  std::vector<const core::LogEntry*> entries;
+  core::LogAttributes filters;
+  if (visibleOnly) {
+    entries.reserve(static_cast<std::size_t>(proxy_->rowCount()));
+    for (int row = 0; row < proxy_->rowCount(); ++row)
+      entries.push_back(model_->entry(proxy_->mapToSource(proxy_->index(row, 0)).row()));
+    filters = proxy_->activeFilters();
+  }
+  progress_->setRange(0, 0);
+  setBusy(true, visibleOnly ? "Exporting visible records…" : "Exporting session…");
+  exporter_.setFuture(QtConcurrent::run(
+      [snapshot, path, visibleOnly, entries = std::move(entries), filters = std::move(filters)] {
+        try {
+          const std::filesystem::path destination{path.toStdString()};
+          if (visibleOnly)
+            app::save_visible_report(destination, entries, filters);
+          else
+            app::save_json_report(destination, snapshot->files);
+          return QString{"Report saved: "} + path;
+        } catch (const std::exception& error) {
+          return QString{"Export failed: "} + QString::fromUtf8(error.what());
+        }
+      }));
 }
 void MainWindow::dragEnterEvent(QDragEnterEvent* event) {
   if (!busy_ && event->mimeData()->hasUrls()) {

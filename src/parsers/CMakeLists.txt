@@ -1,6 +1,7 @@
 add_library(
   loginsight_parsers
   STATIC src/analysis_summary.cpp
+         src/csv_log_parser.cpp
          src/parser_module.cpp
          src/file_import_service.cpp
          src/import_budget.cpp

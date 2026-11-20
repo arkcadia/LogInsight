@@ -12,8 +12,8 @@
 #include <system_error>
 
 namespace loginsight::app {
-AnalysisService::AnalysisService(parsers::JsonParserConfig config)
-    : registry_(parsers::default_parser_registry(std::move(config))) {}
+AnalysisService::AnalysisService(parsers::JsonParserConfig config, parsers::CsvColumns csv)
+    : registry_(parsers::default_parser_registry(std::move(config), std::move(csv))) {}
 
 AnalysisResult AnalysisService::analyze(const std::filesystem::path& path,
                                         parsers::ImportBudget* budget) const {

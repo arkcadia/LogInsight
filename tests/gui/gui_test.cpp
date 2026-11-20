@@ -155,6 +155,31 @@ private slots:
       QVERIFY(window.grab().save(capture + "/explorer-compact.png"));
     }
   }
+  void importsCsvWithDesktopColumnMapping() {
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const auto path = directory.filePath("worker.CSV");
+    std::ofstream{path.toStdString()} << "when,severity,details\n"
+                                         "2026-10-20T09:00:00Z,ERROR,Failed\n";
+    MainWindow window;
+    window.show();
+    QTimer::singleShot(0, &window, [&] {
+      auto* dialog = window.findChild<QDialog*>();
+      const auto fields = dialog->findChildren<QLineEdit*>();
+      QCOMPARE(fields.size(), 4);
+      fields[0]->setText("when");
+      fields[1]->setText("severity");
+      fields[2]->clear();
+      fields[3]->setText("details");
+      dialog->findChild<QDialogButtonBox*>()->button(QDialogButtonBox::Ok)->click();
+    });
+    window.findChild<QAction*>("csvColumns")->trigger();
+    window.importFiles({path});
+    QTRY_VERIFY_WITH_TIMEOUT(!window.busy(), 10000);
+    QCOMPARE(window.logModel()->rowCount(), 1);
+    QCOMPARE(window.logModel()->index(0, 2).data().toString(), QString{"worker"});
+  }
+
   void recapTracksImportedSession() {
     MainWindow window;
     window.resize(840, 620);
@@ -408,7 +433,7 @@ private slots:
     QTemporaryDir directory;
     QVERIFY(directory.isValid());
     const auto empty = directory.filePath("empty.log");
-    const auto unsupported = directory.filePath("invalid.csv");
+    const auto unsupported = directory.filePath("invalid.xml");
     std::ofstream{empty.toStdString()}.close();
     std::ofstream{unsupported.toStdString()}.close();
     const auto result = load_files({empty, unsupported, LOGINSIGHT_SAMPLE_PATH});

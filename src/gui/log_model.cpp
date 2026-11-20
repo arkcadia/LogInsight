@@ -9,7 +9,7 @@ namespace loginsight::gui {
 std::shared_ptr<const Dataset> load_files(const QStringList& paths, std::stop_token stop,
                                           const std::function<void(int)>& progress,
                                           parsers::JsonParserConfig config,
-                                          const rules::BurstRule& rule) {
+                                          const rules::BurstRule& rule, parsers::CsvColumns csv) {
   parsers::ImportBudget budget{.stop = stop, .progress = {}};
   if (paths.size() > 128)
     throw std::runtime_error("session exceeds the 128 file import limit");
@@ -33,7 +33,7 @@ std::shared_ptr<const Dataset> load_files(const QStringList& paths, std::stop_to
     };
   }
   auto dataset = std::make_shared<Dataset>();
-  const app::AnalysisService service{std::move(config)};
+  const app::AnalysisService service{std::move(config), std::move(csv)};
   dataset->files.reserve(static_cast<std::size_t>(paths.size()));
   std::map<QString, std::size_t> sources;
   for (const auto& path : paths) {

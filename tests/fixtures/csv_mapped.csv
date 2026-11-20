@@ -1,0 +1,4 @@
+service,details,when,severity
+worker,"Retry, then ""resume""",2026-10-20T11:00:00.25+02:00,ERROR
+worker,"broken,2026-10-20T09:00:01Z,INFO
+gateway,Recovered,2026-10-20T09:00:02Z,INFO

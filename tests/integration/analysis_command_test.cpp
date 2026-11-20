@@ -1,4 +1,5 @@
 #include "loginsight/app/analysis_command.hpp"
+#include "loginsight/app/analysis_service.hpp"
 
 #include "loginsight/parsers/file_import_service.hpp"
 #include "loginsight/parsers/parser_registry.hpp"
@@ -183,4 +184,22 @@ TEST(AnalysisCommandTest, ReportsOutputStreamFailure) {
   broken.setstate(std::ios::badbit);
   EXPECT_EQ(run_cli(arguments, service, broken, errors), 74);
   EXPECT_NE(errors.str().find("unable to write command output"), std::string::npos);
+}
+
+TEST(AnalysisCommandTest, ImportsMappedCsvAndKeepsRowsAfterMalformedInput) {
+  const auto registry = loginsight::parsers::default_parser_registry();
+  const FileImportService importer{registry};
+  const auto path = fixture_path("csv_mapped.csv").string();
+  const std::array<std::string_view, 8> arguments{
+      "loginsight", "analyse", path, "--csv-columns", "when", "severity", "service", "details"};
+  const auto result = run_command(arguments, importer);
+  EXPECT_EQ(result.exitCode, static_cast<int>(CommandExitCode::success));
+  EXPECT_NE(result.standardOutput.find("Valid entries: 2\nMalformed lines: 1"), std::string::npos);
+  const auto analyzed =
+      loginsight::app::AnalysisService{{}, {"when", "severity", "service", "details"}}.analyze(
+          path);
+  ASSERT_EQ(analyzed.parsed.entries.size(), 2U);
+  EXPECT_EQ(analyzed.parsed.entries[0].message, "Retry, then \"resume\"");
+  EXPECT_EQ(loginsight::app::format_timestamp(analyzed.parsed.entries[0].timestamp),
+            "2026-10-20T09:00:00.25Z");
 }

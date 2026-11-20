@@ -44,6 +44,7 @@ private:
   void setBusy(bool busy, const QString& text);
   void exportReport(bool visibleOnly = false);
   void configureJson();
+  void configureCsv();
   void configureRule();
   void refreshBursts();
   void resetExplorerFilters();
@@ -92,6 +93,7 @@ private:
   QPushButton* ruleSettings_{};
   QPushButton* openBurst_{};
   parsers::JsonParserConfig jsonConfig_;
+  parsers::CsvColumns csvColumns_;
   rules::BurstRule burstRule_;
   std::vector<rules::ErrorBurst> bursts_;
   QPushButton* cancelImport_{};

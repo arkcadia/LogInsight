@@ -31,7 +31,8 @@ struct Dataset {
 std::shared_ptr<const Dataset> load_files(const QStringList& paths, std::stop_token stop = {},
                                           const std::function<void(int)>& progress = {},
                                           parsers::JsonParserConfig config = {},
-                                          const rules::BurstRule& rule = {});
+                                          const rules::BurstRule& rule = {},
+                                          parsers::CsvColumns csv = {});
 QColor level_color(core::LogLevel level);
 
 class LogModel final : public QAbstractTableModel {

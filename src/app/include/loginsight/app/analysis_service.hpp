@@ -28,7 +28,7 @@ struct AnalysisResult {
                                           parsers::ImportBudget* budget = nullptr);
 class AnalysisService {
 public:
-  explicit AnalysisService(parsers::JsonParserConfig config = {});
+  explicit AnalysisService(parsers::JsonParserConfig config = {}, parsers::CsvColumns csv = {});
   [[nodiscard]] AnalysisResult analyze(const std::filesystem::path& path,
                                        parsers::ImportBudget* budget = nullptr) const;
 

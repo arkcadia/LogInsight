@@ -12,7 +12,7 @@ and export a JSON report that includes malformed input. Processing stays on your
 
 ## Features
 
-- `.log`, `.txt`, `.jsonl` and `.ndjson` ingestion with normalized timestamps, severities, sources and messages.
+- `.log`, `.txt`, `.jsonl`, `.ndjson` and `.csv` ingestion with normalized timestamps, severities, sources and messages.
 - Malformed records reported separately while valid records remain available.
 - Dark Qt 6 interface with severity distribution and import diagnostics.
 - Multi-file sessions, native file selection, drag-and-drop and one-click sample loading.
@@ -172,7 +172,7 @@ YYYY-MM-DD HH:MM:SS LEVEL SOURCE MESSAGE
   plain-text record grammar. Zone-free timestamps are interpreted as UTC.
 - Invalid dates, unsupported levels and missing fields are malformed records.
 - Spaces/tabs separate fields. Empty/whitespace-only lines are ignored; LF and CRLF work.
-- Plain-text timestamps have second precision. Multiline records and CSV are unsupported.
+- Plain-text timestamps have second precision. Multiline plain-text records are unsupported.
 - Timestamps must fit the platform's `system_clock` range (roughly 1677–2262 on the validated system).
 - UTF-8 is expected; desktop display and JSON export replace invalid UTF-8 sequences.
 - Data and raw records stay in memory. The table uses a model/proxy rather than per-row widgets,
@@ -197,6 +197,20 @@ The explorer and JSON reports display normalized UTC. Optional top-level string 
 `trace_id` and `request_id` enable correlation. Malformed lines retain the original text and
 line number while valid records remain available.
 Standalone `.json` files and JSON arrays are unsupported.
+
+### CSV
+
+Import comma-separated `.csv` files with a header. The default columns are `timestamp`,
+`level`, `source`, and `message`, in any order. Use **Import Logs → CSV column mappings**,
+or pass four column names after `--csv-columns` in the CLI:
+
+```sh
+loginsight analyse service.csv --csv-columns when severity service details
+```
+
+Leave the source mapping blank (pass `''` in the CLI) to use the filename stem. Quoted
+commas and doubled quotes are supported. Records must each fit on a single physical line.
+Timestamps accept the same format as JSON Lines.
 
 ## Architecture
 

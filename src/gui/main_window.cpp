@@ -123,6 +123,9 @@ MainWindow::MainWindow() {
   auto* mapping = importMenu->addAction("JSON field mappings…");
   mapping->setObjectName("jsonFields");
   connect(mapping, &QAction::triggered, this, &MainWindow::configureJson);
+  auto* csvMapping = importMenu->addAction("CSV column mappings…");
+  csvMapping->setObjectName("csvColumns");
+  connect(csvMapping, &QAction::triggered, this, &MainWindow::configureCsv);
   import_->setMenu(importMenu);
   header->addWidget(export_);
   outer->addLayout(header);
@@ -470,9 +473,9 @@ MainWindow::MainWindow() {
   connect(chooseFiles, &QAction::triggered, this, [this] {
     if (busy_)
       return;
-    const auto paths =
-        QFileDialog::getOpenFileNames(this, "Import logs — replaces current session", {},
-                                      "Log files (*.log *.txt *.jsonl *.ndjson);;All files (*)");
+    const auto paths = QFileDialog::getOpenFileNames(
+        this, "Import logs — replaces current session", {},
+        "Log files (*.log *.txt *.jsonl *.ndjson *.csv);;All files (*)");
     importFiles(paths);
   });
   connect(export_, &QPushButton::clicked, this, [this] { exportReport(); });
@@ -564,22 +567,22 @@ void MainWindow::importFiles(const QStringList& paths) {
   progress_->setValue(0);
   cancelImport_->setEnabled(true);
   cancelImport_->show();
-  importer_.setFuture(
-      QtConcurrent::run([unique, stop = importStop_.get_token(), config = jsonConfig_,
-                         rule = burstRule_](QPromise<ImportOutcome>& promise) {
-        promise.setProgressRange(0, 100);
-        try {
-          const auto progress = [&promise, last = -1](int value) mutable {
-            if (value != last) {
-              last = value;
-              promise.setProgressValue(value);
-            }
-          };
-          promise.addResult(ImportOutcome{load_files(unique, stop, progress, config, rule), {}});
-        } catch (const std::exception& error) {
-          promise.addResult(ImportOutcome{nullptr, QString::fromUtf8(error.what())});
+  importer_.setFuture(QtConcurrent::run([unique, stop = importStop_.get_token(),
+                                         config = jsonConfig_, csv = csvColumns_,
+                                         rule = burstRule_](QPromise<ImportOutcome>& promise) {
+    promise.setProgressRange(0, 100);
+    try {
+      const auto progress = [&promise, last = -1](int value) mutable {
+        if (value != last) {
+          last = value;
+          promise.setProgressValue(value);
         }
-      }));
+      };
+      promise.addResult(ImportOutcome{load_files(unique, stop, progress, config, rule, csv), {}});
+    } catch (const std::exception& error) {
+      promise.addResult(ImportOutcome{nullptr, QString::fromUtf8(error.what())});
+    }
+  }));
 }
 void MainWindow::loadSamples() {
   importFiles({QApplication::applicationDirPath() + "/samples/atlas.log"});
@@ -662,6 +665,40 @@ void MainWindow::configureJson() {
       return;
     }
     jsonConfig_ = std::move(config);
+    dialog.accept();
+  });
+  connect(&buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+  dialog.exec();
+}
+
+void MainWindow::configureCsv() {
+  if (busy_)
+    return;
+  QDialog dialog{this};
+  dialog.setWindowTitle("CSV column mappings");
+  QFormLayout layout{&dialog};
+  QLineEdit timestamp{QString::fromStdString(csvColumns_.timestamp)};
+  QLineEdit level{QString::fromStdString(csvColumns_.level)};
+  QLineEdit source{QString::fromStdString(csvColumns_.source)};
+  QLineEdit message{QString::fromStdString(csvColumns_.message)};
+  source.setPlaceholderText("Use filename if blank");
+  layout.addRow("&Timestamp", &timestamp);
+  layout.addRow("&Severity", &level);
+  layout.addRow("So&urce", &source);
+  layout.addRow("&Message", &message);
+  QLabel error{"Use distinct column names. Only Source can be blank."};
+  error.hide();
+  layout.addRow(&error);
+  QDialogButtonBox buttons{QDialogButtonBox::Ok | QDialogButtonBox::Cancel};
+  layout.addRow(&buttons);
+  connect(&buttons, &QDialogButtonBox::accepted, &dialog, [&] {
+    parsers::CsvColumns columns{timestamp.text().toStdString(), level.text().toStdString(),
+                                source.text().toStdString(), message.text().toStdString()};
+    if (!columns.valid()) {
+      error.show();
+      return;
+    }
+    csvColumns_ = std::move(columns);
     dialog.accept();
   });
   connect(&buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);

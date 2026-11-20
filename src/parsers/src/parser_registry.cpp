@@ -27,10 +27,11 @@ const ILogParser* ParserRegistry::findParser(const std::filesystem::path& path) 
   return nullptr;
 }
 
-ParserRegistry default_parser_registry(JsonParserConfig config) {
+ParserRegistry default_parser_registry(JsonParserConfig config, CsvColumns csv) {
   ParserRegistry registry;
   if (!registry.registerParser(std::make_unique<PlainTextLogParser>()) ||
-      !registry.registerParser(std::make_unique<JsonLinesLogParser>(std::move(config))))
+      !registry.registerParser(std::make_unique<JsonLinesLogParser>(std::move(config))) ||
+      !registry.registerParser(std::make_unique<CsvLogParser>(std::move(csv))))
     throw std::runtime_error("unable to configure parser registry");
   return registry;
 }

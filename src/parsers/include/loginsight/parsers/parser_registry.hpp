@@ -1,5 +1,6 @@
 #pragma once
 
+#include "loginsight/parsers/csv_log_parser.hpp"
 #include "loginsight/parsers/json_parser_config.hpp"
 #include "loginsight/parsers/log_parser.hpp"
 
@@ -18,6 +19,7 @@ private:
   std::vector<std::unique_ptr<ILogParser>> parsers_;
 };
 
-[[nodiscard]] ParserRegistry default_parser_registry(JsonParserConfig config = {});
+[[nodiscard]] ParserRegistry default_parser_registry(JsonParserConfig config = {},
+                                                     CsvColumns csv = {});
 
 } // namespace loginsight::parsers

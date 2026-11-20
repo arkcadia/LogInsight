@@ -16,6 +16,7 @@
 #include <QListWidget>
 #include <QMenu>
 #include <QPlainTextEdit>
+#include <QProgressBar>
 #include <QPushButton>
 #include <QSettings>
 #include <QSignalSpy>
@@ -400,6 +401,11 @@ private slots:
     QCOMPARE(table->model()->rowCount(), 6);
     navigation->setCurrentRow(2);
     auto* source = window.findChild<QPushButton*>("recapSource0");
+    const auto* count = source->findChild<QLabel*>("recapSourceTotal0");
+    const auto* bar = source->findChild<QProgressBar*>();
+    QVERIFY(count->height() >= count->fontMetrics().height());
+    QVERIFY(source->rect().contains(count->geometry()));
+    QVERIFY(source->rect().contains(bar->geometry()));
     QTest::mouseClick(source, Qt::LeftButton);
     QCOMPARE(navigation->currentRow(), 1);
     QCOMPARE(table->model()->rowCount(), 5);

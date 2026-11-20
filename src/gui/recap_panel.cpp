@@ -153,6 +153,8 @@ RecapPanel::RecapPanel(std::function<void(int)> openSeverity,
     connect(group, &QPushButton::clicked, this,
             [openSource, group] { openSource(group->property("sourceName").toString()); });
     auto* groupLayout = new QVBoxLayout(group);
+    // The button's own size hint does not account for its labels and bar.
+    groupLayout->setSizeConstraint(QLayout::SetMinimumSize);
     groupLayout->setContentsMargins(6, 5, 6, 5);
     groupLayout->setSpacing(4);
     auto* row = new QHBoxLayout;

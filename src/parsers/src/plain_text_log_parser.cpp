@@ -197,16 +197,17 @@ ParseResult PlainTextLogParser::parse(std::istream& input, ImportBudget* budget)
     }
     auto parsed_line = parse_line(line);
     if (auto* success = std::get_if<LineParseSuccess>(&parsed_line)) {
-      result.entries.push_back(std::move(success->entry));
+      collect_entry(result, budget, std::move(success->entry));
       continue;
     }
 
     const auto* failure = std::get_if<LineParseFailure>(&parsed_line);
-    result.errors.push_back(ParseError{
-        .lineNumber = line_number,
-        .rawContent = line,
-        .message = failure->message,
-    });
+    collect_malformed(result, budget,
+                      ParseError{
+                          .lineNumber = line_number,
+                          .rawContent = line,
+                          .message = failure->message,
+                      });
   }
 
   if (input.bad() || (input.fail() && !input.eof())) {

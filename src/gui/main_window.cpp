@@ -1,5 +1,6 @@
 #include "main_window.hpp"
 #include "comparison_panel.hpp"
+#include "large_log_panel.hpp"
 #include "live_panel.hpp"
 #include "loginsight/parsers/timestamp_parser.hpp"
 #include "malformed_panel.hpp"
@@ -146,7 +147,8 @@ MainWindow::MainWindow() {
   auto* side = new QVBoxLayout(sidebar);
   side->setContentsMargins(0, 0, 0, 12);
   auto* navigation = navigation_ = new QListWidget;
-  navigation->addItems({"Overview", "Log Explorer", "Recap", "Malformed", "Compare", "Live"});
+  navigation->addItems(
+      {"Overview", "Log Explorer", "Recap", "Malformed", "Compare", "Live", "Large logs"});
   navigation->setCurrentRow(0);
   navigation->setObjectName("navigation");
   side->addWidget(navigation);
@@ -490,6 +492,12 @@ MainWindow::MainWindow() {
   comparison_ = new ComparisonPanel;
   pages_->addWidget(comparison_);
   pages_->addWidget(new LivePanel);
+  large_ = new LargeLogPanel([this] {
+    indexLargeFiles(QFileDialog::getOpenFileNames(
+        this, "Index large log files", {},
+        "Log files (*.log *.txt *.jsonl *.ndjson *.csv);;All files (*)"));
+  });
+  pages_->addWidget(large_);
   status_ = label("Ready");
   status_->setObjectName("statusText");
   status_->setTextFormat(Qt::PlainText);
@@ -638,6 +646,10 @@ void MainWindow::importFiles(const QStringList& paths) {
     }
   }));
 }
+void MainWindow::indexLargeFiles(const QStringList& paths) {
+  large_->openFiles(paths, jsonConfig_, csvColumns_);
+}
+
 void MainWindow::loadSamples() {
   importFiles({QApplication::applicationDirPath() + "/samples/atlas.log"});
 }

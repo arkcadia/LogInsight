@@ -1,6 +1,6 @@
-add_library(loginsight_gui_components STATIC comparison_panel.cpp live_panel.cpp log_model.cpp main_window.cpp malformed_panel.cpp recap_panel.cpp)
+add_library(loginsight_gui_components STATIC comparison_panel.cpp large_log_panel.cpp live_panel.cpp log_model.cpp main_window.cpp malformed_panel.cpp recap_panel.cpp)
 target_include_directories(loginsight_gui_components PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(loginsight_gui_components PUBLIC LogInsight::application LogInsight::rules Qt6::Widgets Qt6::Concurrent)
+target_link_libraries(loginsight_gui_components PUBLIC LogInsight::application LogInsight::rules Qt6::Widgets Qt6::Concurrent PRIVATE SQLite::SQLite3)
 loginsight_enable_warnings(loginsight_gui_components)
 loginsight_enable_sanitizers(loginsight_gui_components)
 

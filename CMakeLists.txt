@@ -34,6 +34,7 @@ add_subdirectory(src/storage)
 add_subdirectory(src/app)
 if(LOGINSIGHT_BUILD_GUI)
   find_package(Qt6 6.4 REQUIRED COMPONENTS Widgets Concurrent)
+  find_package(SQLite3 REQUIRED)
   add_subdirectory(src/gui)
 endif()
 

@@ -26,19 +26,19 @@ and export a JSON report that includes malformed input. Processing stays on your
 - CLI summaries, documented exit codes and JSON export for automation.
 - Qt-free core and application services, with an optional desktop build.
 
-Desktop alerts evaluate a configurable burst rules over the imported session.
+Desktop alerts evaluate configurable burst rules over the imported session.
 The alerts and storage libraries remain scaffolding.
 
 ## Quick start
 
 Requirements: CMake 3.24+, a C++20 compiler with chrono calendar support, nlohmann/json,
-and GoogleTest for tests. The desktop additionally needs Qt 6.4+ Widgets, Concurrent and Test.
+and GoogleTest for tests. The desktop additionally needs Qt 6.4+ Widgets, Concurrent and Test, plus SQLite development headers.
 
 On Ubuntu, install dependencies:
 
 ```sh
 sudo apt-get update
-sudo apt-get install build-essential cmake nlohmann-json3-dev libgtest-dev qt6-base-dev
+sudo apt-get install build-essential cmake nlohmann-json3-dev libgtest-dev qt6-base-dev libsqlite3-dev
 ```
 
 From the repository root:
@@ -67,7 +67,7 @@ ctest --test-dir build-headless --output-on-failure
 
 `LOGINSIGHT_BUILD_TESTS=OFF` removes the GoogleTest requirement. If GoogleTest is absent,
 `LOGINSIGHT_FETCH_GTEST=ON` permits fetching the pinned v1.15.2 tag. System development
-packages keep normal builds offline after installation. No spdlog or SQLite dependency is needed.
+packages keep normal builds offline after installation. The headless build does not require Qt or SQLite.
 
 Validated locally on Ubuntu 26.04, GCC 15.2, Qt 6.10.2. CI is configured for Ubuntu 24.04;
 that workflow has not been executed as part of this local session. Windows and macOS have
@@ -127,12 +127,22 @@ The live view keeps the most recent 5,000 lines and clips very long lines. It is
 from imported sessions and does not apply parser filters or alert rules. **Stop** leaves
 the displayed lines available for inspection.
 
+### Large log files
+
+Open **Large logs → Index log files** to browse batches beyond the ordinary desktop size
+and line-count limits. The parser streams valid records into a temporary SQLite index.
+The table reads 200 rows at a time in file order, with the original record available on selection.
+Indexing can be cancelled, and an incomplete index leaves the previous one available.
+The 256 KiB physical line limit still applies. Malformed records are counted and skipped.
+Use the ordinary import workflow for filters, alerts, charts, and export. The temporary index
+requires free disk space and is removed when replaced or when the app closes.
+
 ### Burst alerts
 
 In **Overview**, select an alert and choose **Open matching records**. The default rule flags
 five `ERROR` or `CRITICAL` events from the same source within 60 seconds, including events
 spread across multiple files. **Alert rules** lets you keep up to 16 named rules with independent event counts, windows,
-minimum severities, and source filters. Changes reevaluate the current session. The rule orders
+minimum severities, and source filters. Changes reevaluate the current session. Each rule orders
 records by timestamp and uses each matching record once. Settings last until the app closes.
 
 ### Command line
@@ -199,7 +209,8 @@ YYYY-MM-DD HH:MM:SS LEVEL SOURCE MESSAGE
 - Timestamps must fit the platform's `system_clock` range (roughly 1677–2262 on the validated system).
 - UTF-8 is expected; desktop display and JSON export replace invalid UTF-8 sequences.
 - Data and raw records stay in memory. The table uses a model/proxy rather than per-row widgets,
-  but filtering/sorting still runs on the UI thread. This is not a streaming or unbounded-data tool.
+  but filtering and sorting still run on the UI thread. Use **Large logs** to page through an
+  on-disk index when a batch exceeds the regular import limits.
   A 30,000-entry import is covered by a responsiveness regression test; no throughput benchmark is claimed.
 
 ### JSON Lines
@@ -309,7 +320,6 @@ project emphasizes explicit failures, ownership, regression testing and reproduc
 
 ## Roadmap
 
-- Explore streaming ingestion and paged browsing for sessions beyond the desktop limits.
 - Validate native desktop packaging and accessibility on additional platforms.
 
 ## License

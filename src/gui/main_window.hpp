@@ -23,10 +23,12 @@ namespace loginsight::gui {
 class RecapPanel;
 class ComparisonPanel;
 class MalformedPanel;
+class LargeLogPanel;
 class MainWindow final : public QMainWindow {
 public:
   MainWindow();
   void importFiles(const QStringList& paths);
+  void indexLargeFiles(const QStringList& paths);
   void loadSamples();
   void exportTo(const QString& path, bool visibleOnly = false,
                 std::vector<std::string> redactions = {});
@@ -73,6 +75,7 @@ private:
   RecapPanel* recap_{};
   ComparisonPanel* comparison_{};
   MalformedPanel* malformed_{};
+  LargeLogPanel* large_{};
   QTableView* table_{};
   QSplitter* splitter_{};
   QTextEdit* details_{};

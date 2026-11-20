@@ -6,6 +6,7 @@
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QFile>
+#include <QFileInfo>
 #include <QInputDialog>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -206,6 +207,48 @@ private slots:
     QCOMPARE(table->model()->rowCount(), 0);
     window.findChild<QPushButton*>("bookmarkChip")->click();
     QCOMPARE(table->model()->rowCount(), 3);
+  }
+
+  void indexesLogsBeyondMemoryLimitAndPagesFromDisk() {
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const auto path = directory.filePath("large.log");
+    {
+      std::ofstream input{path.toStdString()};
+      input << std::string(loginsight::parsers::ImportBudget::maxLines + 1, '\n');
+      const std::string payload(220 * 1024, 'x');
+      for (int i = 0; i < 160; ++i)
+        input << "2026-10-20 09:00:00 INFO worker " << payload << '\n';
+      for (int i = 0; i < 45; ++i)
+        input << "2026-10-20 09:00:01 ERROR worker short " << i << '\n';
+      input << "bad record\n";
+    }
+    QVERIFY(QFileInfo{path}.size() >
+            static_cast<qint64>(loginsight::parsers::ImportBudget::maxBytes));
+    MainWindow window;
+    window.show();
+    window.findChild<QListWidget*>("navigation")->setCurrentRow(6);
+    window.indexLargeFiles({path});
+    auto* status = window.findChild<QLabel*>("largeLogStatus");
+    QTRY_VERIFY_WITH_TIMEOUT(status->text().contains("205 indexed records"), 15000);
+    QVERIFY(status->text().contains("1 malformed"));
+    auto* table = window.findChild<QTableView*>("largeLogTable");
+    QCOMPARE(table->model()->rowCount(), 200);
+    QCOMPARE(table->model()->index(0, 3).data().toString().size(), 512);
+    auto* next = window.findChild<QPushButton*>("largeNext");
+    next->click();
+    QCOMPARE(table->model()->rowCount(), 5);
+    QCOMPARE(table->model()->index(0, 3).data().toString(), QString{"short 40"});
+    QVERIFY(!next->isEnabled());
+    table->setCurrentIndex(table->model()->index(0, 0));
+    auto* details = window.findChild<QPlainTextEdit*>("largeLogDetails");
+    QVERIFY(details->toPlainText().contains("ERROR worker short 40"));
+
+    window.indexLargeFiles({directory.filePath("missing.log")});
+    QTRY_VERIFY(status->text().startsWith("Indexing failed:"));
+    QCOMPARE(table->model()->rowCount(), 5);
+    window.findChild<QPushButton*>("largePrevious")->click();
+    QCOMPARE(table->model()->rowCount(), 200);
   }
 
   void followsCompleteRecordsAcrossRotationAndTruncation() {

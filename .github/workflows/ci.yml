@@ -33,7 +33,7 @@ jobs:
           sudo apt-get install --yes --no-install-recommends \
             nlohmann-json3-dev libgtest-dev
           if [ "${{ matrix.gui }}" = "ON" ]; then
-            sudo apt-get install --yes --no-install-recommends qt6-base-dev
+            sudo apt-get install --yes --no-install-recommends qt6-base-dev libsqlite3-dev
           fi
       - name: Configure
         run: >-

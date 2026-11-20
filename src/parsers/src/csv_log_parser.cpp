@@ -112,8 +112,8 @@ ParseResult CsvLogParser::parse(const std::filesystem::path& path, ImportBudget*
       continue;
     const auto fields = read_columns(line);
     if (!fields || fields->size() != header->size()) {
-      result.errors.push_back(
-          {lineNumber, std::move(line), "malformed CSV row or wrong column count"});
+      collect_malformed(result, budget,
+                        {lineNumber, std::move(line), "malformed CSV row or wrong column count"});
       continue;
     }
     const auto& values = *fields;
@@ -122,13 +122,15 @@ ParseResult CsvLogParser::parse(const std::filesystem::path& path, ImportBudget*
     const auto& message = values[indices[3]];
     if (!timestamp || !level || *level == core::LogLevel::unknown ||
         message.find_first_not_of(" \t\r\n") == std::string::npos) {
-      result.errors.push_back({lineNumber, std::move(line),
-                               !timestamp                                    ? "invalid timestamp"
-                               : !level || *level == core::LogLevel::unknown ? "invalid severity"
-                                                                             : "missing message"});
+      collect_malformed(result, budget,
+                        {lineNumber, std::move(line),
+                         !timestamp                                    ? "invalid timestamp"
+                         : !level || *level == core::LogLevel::unknown ? "invalid severity"
+                                                                       : "missing message"});
       continue;
     }
-    result.entries.push_back(
+    collect_entry(
+        result, budget,
         {.timestamp = *timestamp,
          .level = *level,
          .source = core::LogSource{.name = columns_.source.empty() || values[indices[2]].empty()

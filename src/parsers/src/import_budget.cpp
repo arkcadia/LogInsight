@@ -1,7 +1,9 @@
 #include "loginsight/parsers/import_budget.hpp"
+#include "loginsight/parsers/parse_result.hpp"
 
 #include <istream>
 #include <stdexcept>
+#include <utility>
 
 namespace loginsight::parsers {
 
@@ -23,7 +25,7 @@ bool ImportBudget::readLine(std::istream& input, std::string& line) {
       return false;
     const bool more = input.fail() && !input.eof() && consumed == sizeof(chunk) - 1;
     const auto content = consumed - static_cast<std::size_t>(!input.fail() && !input.eof());
-    if (consumed > maxBytes - bytes)
+    if (enforceBatchLimits && consumed > maxBytes - bytes)
       throw std::runtime_error("session exceeds the 32 MiB import limit");
     if (content > maxLineBytes - line.size())
       throw std::runtime_error("a record exceeds the 256 KiB line limit");
@@ -33,12 +35,26 @@ bool ImportBudget::readLine(std::istream& input, std::string& line) {
       input.clear(input.rdstate() & ~std::ios::failbit);
       continue;
     }
-    if (++lines > maxLines)
+    if (++lines > maxLines && enforceBatchLimits)
       throw std::runtime_error("session exceeds the 200,000 line import limit");
     if (progress)
       progress(bytes);
     return true;
   }
+}
+
+void collect_entry(ParseResult& result, ImportBudget* budget, core::LogEntry entry) {
+  if (budget && budget->onEntry)
+    budget->onEntry(entry);
+  else
+    result.entries.push_back(std::move(entry));
+}
+
+void collect_malformed(ParseResult& result, ImportBudget* budget, ParseError error) {
+  if (budget && budget->onMalformed)
+    budget->onMalformed(error);
+  else
+    result.errors.push_back(std::move(error));
 }
 
 } // namespace loginsight::parsers

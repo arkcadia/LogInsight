@@ -80,7 +80,7 @@ ParseResult JsonLinesLogParser::parse(const std::filesystem::path& path,
       error = "missing or invalid message";
 
     if (error) {
-      result.errors.push_back({line_number, std::move(line), error});
+      collect_malformed(result, budget, {line_number, std::move(line), error});
       continue;
     }
     core::LogAttributes attributes;
@@ -88,13 +88,13 @@ ParseResult JsonLinesLogParser::parse(const std::filesystem::path& path,
       if (const auto* id = find_string(record, key); id && !id->empty())
         attributes.emplace(key, *id);
     }
-    result.entries.push_back(
-        {.timestamp = *timestamp,
-         .level = level,
-         .source = core::LogSource{.name = source ? *source : path.stem().string()},
-         .message = *message,
-         .rawContent = std::move(line),
-         .attributes = std::move(attributes)});
+    collect_entry(result, budget,
+                  {.timestamp = *timestamp,
+                   .level = level,
+                   .source = core::LogSource{.name = source ? *source : path.stem().string()},
+                   .message = *message,
+                   .rawContent = std::move(line),
+                   .attributes = std::move(attributes)});
   }
   if (input.bad() || (input.fail() && !input.eof()))
     result.errors.push_back({0U, {}, "unable to read input"});

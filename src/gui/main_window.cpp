@@ -1,5 +1,7 @@
 #include "main_window.hpp"
 #include "loginsight/parsers/timestamp_parser.hpp"
+#include "recap_panel.hpp"
+#include <QAction>
 #include <QApplication>
 #include <QCloseEvent>
 #include <QComboBox>
@@ -8,15 +10,19 @@
 #include <QDragEnterEvent>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QFontMetrics>
 #include <QFormLayout>
 #include <QHeaderView>
+#include <QKeySequence>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QMenu>
 #include <QMimeData>
 #include <QProgressBar>
 #include <QPromise>
 #include <QPushButton>
+#include <QResizeEvent>
 #include <QScrollArea>
 #include <QSignalBlocker>
 #include <QSpinBox>
@@ -33,6 +39,8 @@
 
 namespace loginsight::gui {
 namespace {
+constexpr std::array metricNames{"Entries", "Errors + critical", "Warnings", "Malformed"};
+
 QLabel* label(const QString& text, const char* style = "") {
   auto* value = new QLabel{text};
   value->setStyleSheet(style);
@@ -61,9 +69,16 @@ MainWindow::MainWindow() {
     QWidget#panel { background: #1d1f29; border: 1px solid #30323f; border-radius: 8px; }
     QLabel { background: transparent; border: none; }
     QPushButton { background: #272936; border: 1px solid #3a3d4e; border-radius: 5px; padding: 9px 16px; }
+    QPushButton:focus { border-color: #c5acef; }
+    QPushButton:checked { background: #493961; border-color: #c5acef; color: #f1e8ff; }
+    QPushButton[filterChip="true"] { background: #30283f; border-color: #62527a; padding: 4px 8px; }
+    QPushButton[filterChip="true"]:hover, QPushButton[filterChip="true"]:focus { border-color: #c5acef; }
+    QPushButton[metric="true"] { text-align: left; padding: 12px; }
     QPushButton:hover { background: #343044; border-color: #a38ae4; }
+    QPushButton:checked:hover { background: #493961; border-color: #e1c9ff; }
     QPushButton:disabled { color: #686b7c; border-color: #292b35; }
-    QPushButton#primary { background: #7960b5; border-color: #a18bd1; color: white; }
+    QPushButton#primary { background: #664ba4; border-color: #a18bd1; color: white; }
+    QPushButton#primary:focus { border-color: #eee2ff; }
     QListWidget { background: #181a22; border: none; padding: 12px; outline: none; }
     QListWidget::item { padding: 13px; margin: 3px 0; border-radius: 5px; }
     QListWidget::item:selected { background: #30283f; color: #c5acef; }
@@ -71,11 +86,11 @@ MainWindow::MainWindow() {
     QLineEdit:focus, QComboBox:focus { border-color: #a38ae4; }
     QComboBox QAbstractItemView { background: #242633; selection-background-color: #554370; }
     QTableView { background: #191b23; alternate-background-color: #1e202b; border: 1px solid #30323f; gridline-color: #292c39; selection-background-color: #39304d; selection-color: white; }
-    QHeaderView::section { background: #242633; color: #b9bbca; border: none; border-bottom: 1px solid #363849; padding: 10px; font-weight: bold; }
+    QHeaderView::section { background: #242633; color: #b9bbca; border: none; border-bottom: 1px solid #363849; padding: 6px 8px; font-weight: bold; }
     QProgressBar { background: #2a2d39; border: none; border-radius: 3px; max-height: 9px; }
     QProgressBar::chunk { background: #a38ae4; border-radius: 3px; }
     QStatusBar { background: #181a22; color: #b4b7c9; border-top: 1px solid #30323f; }
-    QSplitter::handle { background: #30323f; height: 4px; }
+    QSplitter::handle { background: #404354; }
     QScrollArea { border: none; }
     QScrollBar:vertical { background: #191b24; width: 10px; margin: 0; }
     QScrollBar::handle:vertical { background: #404354; min-height: 25px; border-radius: 4px; }
@@ -88,40 +103,40 @@ MainWindow::MainWindow() {
   outer->setContentsMargins(0, 0, 0, 0);
   outer->setSpacing(0);
   auto* header = new QHBoxLayout;
-  header->setContentsMargins(24, 18, 24, 18);
-  header->setSpacing(16);
+  header->setContentsMargins(18, 10, 18, 10);
+  header->setSpacing(10);
   auto* brand = label("LogInsight", "font-size: 24px; font-weight: 700;");
   header->addWidget(brand);
-  header->addWidget(label("/   LOCAL LOG ANALYSIS", "color: #9997ac; font-size: 11px;"));
   header->addStretch();
   samples_ = new QPushButton{"Load Sample Logs"};
   samples_->setObjectName("loadSamples");
   import_ = new QPushButton{"Import Logs"};
   import_->setObjectName("primary");
-  export_ = new QPushButton{"Export JSON"};
+  export_ = new QPushButton{"Export full session"};
   export_->setEnabled(false);
   header->addWidget(samples_);
   header->addWidget(import_);
-  mapping_ = new QPushButton{"JSON fields"};
-  mapping_->setObjectName("jsonFields");
-  header->addWidget(mapping_);
-  connect(mapping_, &QPushButton::clicked, this, &MainWindow::configureJson);
+  auto* importMenu = new QMenu{import_};
+  auto* chooseFiles = importMenu->addAction("Choose log files…");
+  chooseFiles->setShortcut(QKeySequence::Open);
+  addAction(chooseFiles);
+  auto* mapping = importMenu->addAction("JSON field mappings…");
+  mapping->setObjectName("jsonFields");
+  connect(mapping, &QAction::triggered, this, &MainWindow::configureJson);
+  import_->setMenu(importMenu);
   header->addWidget(export_);
   outer->addLayout(header);
   auto* body = new QHBoxLayout;
   body->setSpacing(0);
   auto* sidebar = new QWidget;
-  sidebar->setFixedWidth(186);
+  sidebar->setFixedWidth(144);
   auto* side = new QVBoxLayout(sidebar);
   side->setContentsMargins(0, 0, 0, 12);
   auto* navigation = navigation_ = new QListWidget;
-  navigation->addItems({"Overview", "Log Explorer"});
+  navigation->addItems({"Overview", "Log Explorer", "Recap"});
   navigation->setCurrentRow(0);
   navigation->setObjectName("navigation");
   side->addWidget(navigation);
-  auto* sideNote = label("  PORTFOLIO MVP\n\n  Log investigation\n  Local processing",
-                         "color: #8b8da2; font-size: 11px;");
-  side->addWidget(sideNote);
   body->addWidget(sidebar);
   pages_ = new QStackedWidget;
   body->addWidget(pages_, 1);
@@ -130,11 +145,9 @@ MainWindow::MainWindow() {
   scroll->setWidgetResizable(true);
   auto* overview = new QWidget;
   auto* dashboard = new QVBoxLayout(overview);
-  dashboard->setContentsMargins(28, 24, 28, 24);
-  dashboard->setSpacing(20);
-  dashboard->addWidget(
-      label("SESSION OVERVIEW", "color: #b29adf; font-size: 11px; letter-spacing: 2px;"));
-  dashboard->addWidget(label("Make sense of your logs.", "font-size: 28px; font-weight: 600;"));
+  dashboard->setContentsMargins(18, 14, 18, 14);
+  dashboard->setSpacing(12);
+  dashboard->addWidget(label("Session overview", "font-size: 25px; font-weight: 600;"));
   overviewText_ =
       label("Start with the sample session, or import plain-text or JSON Lines logs. You can "
             "also drop files here.");
@@ -142,16 +155,30 @@ MainWindow::MainWindow() {
   overviewText_->setStyleSheet("color: #acafc2;");
   dashboard->addWidget(overviewText_);
   auto* cards = new QGridLayout;
-  cards->setSpacing(12);
-  const QStringList metricNames{"VALID ENTRIES", "ERRORS + CRITICAL", "WARNINGS", "MALFORMED"};
+  const QStringList metricIds{"entriesMetric", "errorsMetric", "warningsMetric", "malformedMetric"};
   for (int i = 0; i < 4; ++i) {
-    auto* card = panel();
-    auto* layout = new QVBoxLayout(card);
-    layout->setContentsMargins(18, 16, 18, 16);
-    layout->addWidget(label(metricNames[i], "font-size: 10px; color: #acafc2;"));
-    metrics_[static_cast<std::size_t>(i)] = label("—", "font-size: 32px; font-weight: 600;");
-    layout->addWidget(metrics_[static_cast<std::size_t>(i)]);
-    cards->addWidget(card, 0, i);
+    auto* metric =
+        new QPushButton{QString::fromUtf8(metricNames[static_cast<std::size_t>(i)]) + ": —"};
+    metric->setProperty("metric", true);
+    metric->setObjectName(metricIds[i]);
+    metric->setEnabled(false);
+    metrics_[static_cast<std::size_t>(i)] = metric;
+    cards->addWidget(metric, 0, i);
+    cards->setColumnStretch(i, 1);
+    connect(metric, &QPushButton::clicked, this, [this, scroll, i] {
+      if (i == 3) {
+        scroll->ensureWidgetVisible(diagnostics_);
+        diagnostics_->setFocus();
+        return;
+      }
+      resetExplorerFilters();
+      const int level = i == 1   ? LogFilter::errorAndCritical
+                        : i == 2 ? static_cast<int>(core::LogLevel::warning)
+                                 : -1;
+      severity_->setCurrentIndex(severity_->findData(level));
+      navigation_->setCurrentRow(1);
+      table_->setFocus();
+    });
   }
   dashboard->addLayout(cards);
   auto* distribution = panel();
@@ -180,11 +207,13 @@ MainWindow::MainWindow() {
     row->addWidget(barCounts_[i]);
     dist->addLayout(row);
   }
-  dashboard->addWidget(distribution);
-  dashboard->addWidget(label("Burst alerts", "font-size: 16px; font-weight: 600;"));
+  auto* alertHeader = new QHBoxLayout;
+  alertHeader->addWidget(label("Burst alerts", "font-size: 16px; font-weight: 600;"));
+  alertHeader->addStretch();
+  dashboard->addLayout(alertHeader);
   ruleSettings_ = new QPushButton{"Alert rule"};
   ruleSettings_->setObjectName("alertRule");
-  dashboard->addWidget(ruleSettings_, 0, Qt::AlignLeft);
+  alertHeader->addWidget(ruleSettings_);
   ruleDescription_ = label("5 events at Error or higher in 60 seconds per source.");
   ruleDescription_->setTextFormat(Qt::PlainText);
   ruleDescription_->setWordWrap(true);
@@ -199,47 +228,42 @@ MainWindow::MainWindow() {
   dashboard->addWidget(noBursts_);
   alerts_->hide();
   dashboard->addWidget(alerts_);
-  auto* openBurst = new QPushButton{"Open matching records"};
-  openBurst->setObjectName("openBurst");
-  openBurst->setEnabled(false);
-  dashboard->addWidget(openBurst, 0, Qt::AlignLeft);
+  openBurst_ = new QPushButton{"Open matching records"};
+  openBurst_->setObjectName("openBurst");
+  openBurst_->setEnabled(false);
+  alertHeader->insertWidget(2, openBurst_);
+  openBurst_->hide();
   connect(alerts_, &QListWidget::currentRowChanged, this,
-          [openBurst](int row) { openBurst->setEnabled(row >= 0); });
-  connect(openBurst, &QPushButton::clicked, this, [this] { showBurst(alerts_->currentRow()); });
+          [this](int row) { openBurst_->setEnabled(row >= 0); });
+  connect(openBurst_, &QPushButton::clicked, this, [this] { showBurst(alerts_->currentRow()); });
   connect(alerts_, &QListWidget::itemActivated, this,
           [this](QListWidgetItem* item) { showBurst(alerts_->row(item)); });
   dashboard->addWidget(label("Import diagnostics", "font-size: 16px; font-weight: 600;"));
   diagnostics_ = textPanel("No files imported. Select Load Sample Logs for a guided first "
                            "session.\nValid records and malformed records are kept separately.");
   diagnostics_->setObjectName("diagnostics");
+  diagnostics_->setAccessibleName("Import diagnostics");
   diagnostics_->setMinimumHeight(120);
   dashboard->addWidget(diagnostics_);
+  dashboard->addWidget(distribution);
   dashboard->addStretch();
   scroll->setWidget(overview);
   pages_->addWidget(scroll);
   auto* explorer = new QWidget;
   auto* logs = new QVBoxLayout(explorer);
-  logs->setContentsMargins(28, 24, 28, 24);
-  logs->setSpacing(16);
-  logs->addWidget(label("Log Explorer", "font-size: 26px; font-weight: 600;"));
-  explorerCount_ =
-      label("No entries yet. Import logs to explore their contents.", "color: #acafc2;");
-  logs->addWidget(explorerCount_);
+  logs->setContentsMargins(16, 10, 16, 10);
+  logs->setSpacing(8);
   auto* actions = new QHBoxLayout;
-  clearBurst_ = new QPushButton{"Clear drill-down"};
-  exportVisible_ = new QPushButton{"Export visible records"};
-  exportVisible_->setEnabled(false);
-  actions->addWidget(clearBurst_);
+  actions->addWidget(label("Log Explorer", "font-size: 22px; font-weight: 600;"));
+  explorerCount_ = label("No entries", "color: #acafc2;");
+  actions->addWidget(explorerCount_);
   actions->addStretch();
+  exportVisible_ = new QPushButton{"Export filtered results (0)"};
+  exportVisible_->setObjectName("exportFiltered");
+  exportVisible_->setEnabled(false);
   actions->addWidget(exportVisible_);
   logs->addLayout(actions);
   connect(exportVisible_, &QPushButton::clicked, this, [this] { exportReport(true); });
-  clearBurst_->hide();
-  connect(clearBurst_, &QPushButton::clicked, this, [this] {
-    proxy_->setBurst({});
-    proxy_->setCorrelation({}, {});
-    clearBurst_->hide();
-  });
   auto* filters = new QHBoxLayout;
   search_ = new QLineEdit;
   search_->setPlaceholderText("Search message text…");
@@ -251,14 +275,53 @@ MainWindow::MainWindow() {
   severity_->setAccessibleName("Severity filter");
   for (int i = 0; i < 7; ++i)
     severity_->addItem(levels[i], i);
+  severity_->addItem("Error + critical", LogFilter::errorAndCritical);
   source_ = new QComboBox;
   source_->addItem("All sources");
   source_->setAccessibleName("Source filter");
-  source_->setMinimumWidth(150);
+  source_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+  source_->setMinimumContentsLength(8);
   filters->addWidget(search_, 1);
   filters->addWidget(severity_);
   filters->addWidget(source_);
+  auto* toggleTime = new QPushButton{"Time range"};
+  toggleTime->setObjectName("toggleTimeRange");
+  toggleTime->setCheckable(true);
+  filters->addWidget(toggleTime);
   logs->addLayout(filters);
+  chipRow_ = new QWidget;
+  auto* chipLayout = new QHBoxLayout(chipRow_);
+  chipLayout->setContentsMargins(0, 0, 0, 0);
+  chipLayout->setSpacing(5);
+  const QStringList chipIds{"searchChip", "severityChip", "sourceChip", "timeChip",
+                            "drillDownChip"};
+  for (std::size_t i = 0; i < chips_.size(); ++i) {
+    auto* chip = chips_[i] = new QPushButton;
+    chip->setObjectName(chipIds[static_cast<qsizetype>(i)]);
+    chip->setProperty("filterChip", true);
+    chipLayout->addWidget(chip);
+  }
+  chipLayout->addStretch();
+  auto* clearAll = new QPushButton{"Clear all"};
+  clearAll->setObjectName("clearFilters");
+  clearAll->setStyleSheet("padding: 4px 8px;");
+  chipLayout->addWidget(clearAll);
+  logs->addWidget(chipRow_);
+  chipRow_->hide();
+  connect(chips_[0], &QPushButton::clicked, this, [this] {
+    search_->clear();
+    proxy_->setSearch({});
+    refreshFilterChips();
+  });
+  connect(chips_[1], &QPushButton::clicked, this, [this] { severity_->setCurrentIndex(0); });
+  connect(chips_[2], &QPushButton::clicked, this, [this] { source_->setCurrentIndex(0); });
+  connect(chips_[3], &QPushButton::clicked, this, &MainWindow::clearTimeRange);
+  connect(chips_[4], &QPushButton::clicked, this, [this] {
+    proxy_->setBurst({});
+    proxy_->setCorrelation({}, {});
+    refreshFilterChips();
+  });
+  connect(clearAll, &QPushButton::clicked, this, &MainWindow::resetExplorerFilters);
   auto* timeline = new QGridLayout;
   logs->addWidget(label("Session timeline · UTC · bars show error and critical counts"));
   for (std::size_t i = 0; i < timelineSize; ++i) {
@@ -272,6 +335,7 @@ MainWindow::MainWindow() {
     button->setStyleSheet("padding: 4px;");
     button->setObjectName(QString("timelineBucket%1").arg(i));
     button->setEnabled(false);
+    button->setCheckable(true);
     timeline->addWidget(bar, 0, static_cast<int>(i));
     timeline->addWidget(button, 1, static_cast<int>(i));
     timeline->setColumnStretch(static_cast<int>(i), 1);
@@ -280,6 +344,7 @@ MainWindow::MainWindow() {
       from_->setText(from);
       through_->setText(through);
       applyTimeRange();
+      timelineButtons_[i]->setChecked(true);
     });
   }
   timelineStart_ = label({}, "color: #acafc2;");
@@ -288,7 +353,15 @@ MainWindow::MainWindow() {
   timeline->addWidget(timelineEnd_, 2, static_cast<int>(timelineSize / 2), 1,
                       static_cast<int>(timelineSize / 2), Qt::AlignRight);
   logs->addLayout(timeline);
+  timeControls_ = new QWidget;
+  timeControls_->setObjectName("timeControls");
+  auto* timeLayout = new QVBoxLayout(timeControls_);
+  timeLayout->setContentsMargins(0, 0, 0, 0);
   auto* timeFilters = new QHBoxLayout;
+  timeLayout->addLayout(timeFilters);
+  logs->addWidget(timeControls_);
+  timeControls_->hide();
+  connect(toggleTime, &QPushButton::toggled, timeControls_, &QWidget::setVisible);
   from_ = new QLineEdit;
   through_ = new QLineEdit;
   from_->setObjectName("timeFrom");
@@ -308,18 +381,16 @@ MainWindow::MainWindow() {
   clear->setObjectName("clearTimeRange");
   timeFilters->addWidget(apply);
   timeFilters->addWidget(clear);
-  logs->addLayout(timeFilters);
   timeRangeError_ = label({}, "color: #ff9393;");
   timeRangeError_->setWordWrap(true);
   timeRangeError_->hide();
-  logs->addWidget(timeRangeError_);
+  timeLayout->addWidget(timeRangeError_);
   connect(apply, &QPushButton::clicked, this, &MainWindow::applyTimeRange);
-  connect(clear, &QPushButton::clicked, this, [this] {
-    from_->clear();
-    through_->clear();
-    applyTimeRange();
-  });
-  auto* splitter = new QSplitter{Qt::Vertical};
+  connect(clear, &QPushButton::clicked, this, &MainWindow::clearTimeRange);
+  splitter_ = new QSplitter{Qt::Vertical};
+  splitter_->setObjectName("explorerSplit");
+  splitter_->setChildrenCollapsible(false);
+  splitter_->setHandleWidth(5);
   table_ = new QTableView;
   table_->setObjectName("logTable");
   model_ = new LogModel{this};
@@ -334,20 +405,29 @@ MainWindow::MainWindow() {
   table_->setShowGrid(false);
   table_->setWordWrap(false);
   table_->verticalHeader()->hide();
-  table_->verticalHeader()->setDefaultSectionSize(36);
-  table_->setColumnWidth(0, 210);
-  table_->setColumnWidth(1, 105);
-  table_->setColumnWidth(2, 140);
+  table_->verticalHeader()->setDefaultSectionSize(28);
+  table_->setColumnWidth(0, 190);
+  table_->setColumnWidth(1, 82);
+  table_->setColumnWidth(2, 95);
   table_->horizontalHeader()->setStretchLastSection(true);
-  splitter->addWidget(table_);
+  splitter_->addWidget(table_);
+  auto* inspector = new QWidget;
+  auto* inspectorLayout = new QVBoxLayout(inspector);
+  inspectorLayout->setContentsMargins(8, 0, 0, 0);
+  inspectorLayout->setSpacing(5);
+  inspectorLayout->addWidget(label("Record details", "font-weight: 600;"));
   details_ = textPanel("Select an entry to inspect its message, file path and raw log record.");
   details_->setObjectName("details");
-  splitter->addWidget(details_);
-  splitter->setSizes({390, 180});
-  logs->addWidget(splitter, 1);
+  details_->setAccessibleName("Record details");
+  details_->setStyleSheet("font-family: monospace;");
+  inspectorLayout->addWidget(details_, 1);
+  splitter_->addWidget(inspector);
+  splitter_->setStretchFactor(0, 3);
+  splitter_->setStretchFactor(1, 1);
+  logs->addWidget(splitter_, 1);
   auto* correlations = new QHBoxLayout;
-  trace_ = new QPushButton{"Show trace events"};
-  request_ = new QPushButton{"Show request events"};
+  trace_ = new QPushButton{"Follow trace"};
+  request_ = new QPushButton{"Follow request"};
   trace_->setObjectName("showTrace");
   request_->setObjectName("showRequest");
   for (auto* button : {trace_, request_}) {
@@ -355,10 +435,12 @@ MainWindow::MainWindow() {
     correlations->addWidget(button);
   }
   correlations->addStretch();
-  logs->addLayout(correlations);
+  inspectorLayout->addLayout(correlations);
   connect(trace_, &QPushButton::clicked, this, [this] { showCorrelation("trace_id"); });
   connect(request_, &QPushButton::clicked, this, [this] { showCorrelation("request_id"); });
   pages_->addWidget(explorer);
+  recap_ = new RecapPanel;
+  pages_->addWidget(recap_);
   status_ = label("Ready");
   status_->setObjectName("statusText");
   status_->setTextFormat(Qt::PlainText);
@@ -385,7 +467,9 @@ MainWindow::MainWindow() {
   statusBar()->addPermanentWidget(session_);
   connect(navigation, &QListWidget::currentRowChanged, pages_, &QStackedWidget::setCurrentIndex);
   connect(samples_, &QPushButton::clicked, this, &MainWindow::loadSamples);
-  connect(import_, &QPushButton::clicked, this, [this] {
+  connect(chooseFiles, &QAction::triggered, this, [this] {
+    if (busy_)
+      return;
     const auto paths =
         QFileDialog::getOpenFileNames(this, "Import logs — replaces current session", {},
                                       "Log files (*.log *.txt *.jsonl *.ndjson);;All files (*)");
@@ -396,16 +480,22 @@ MainWindow::MainWindow() {
   debounce->setSingleShot(true);
   debounce->setInterval(180);
   connect(search_, &QLineEdit::textChanged, debounce, [debounce] { debounce->start(); });
-  connect(debounce, &QTimer::timeout, this, [this] { proxy_->setSearch(search_->text()); });
-  connect(severity_, &QComboBox::currentIndexChanged, this,
-          [this] { proxy_->setSeverity(severity_->currentData().toInt()); });
+  connect(debounce, &QTimer::timeout, this, [this] {
+    proxy_->setSearch(search_->text());
+    refreshFilterChips();
+  });
+  connect(severity_, &QComboBox::currentIndexChanged, this, [this] {
+    proxy_->setSeverity(severity_->currentData().toInt());
+    refreshFilterChips();
+  });
   connect(source_, &QComboBox::currentIndexChanged, this, [this] {
     proxy_->setSource(source_->currentIndex() == 0 ? QString{} : source_->currentText());
+    refreshFilterChips();
   });
   const auto updateCount = [this] {
-    explorerCount_->setText(QString("%1 of %2 entries · select a row for the original record")
-                                .arg(proxy_->rowCount())
-                                .arg(model_->rowCount()));
+    explorerCount_->setText(
+        QString("%1 of %2 entries").arg(proxy_->rowCount()).arg(model_->rowCount()));
+    exportVisible_->setText(QString("Export filtered results (%1)").arg(proxy_->rowCount()));
     exportVisible_->setEnabled(!busy_ && proxy_->rowCount() > 0);
     showDetails(table_->currentIndex());
   };
@@ -454,7 +544,6 @@ MainWindow::MainWindow() {
 void MainWindow::setBusy(bool busy, const QString& text) {
   busy_ = busy;
   import_->setEnabled(!busy);
-  mapping_->setEnabled(!busy);
   ruleSettings_->setEnabled(!busy);
   exportVisible_->setEnabled(!busy && proxy_->rowCount() > 0);
   samples_->setEnabled(!busy);
@@ -499,6 +588,7 @@ void MainWindow::refresh() {
   resetExplorerFilters();
   model_->setDataset(dataset_);
   refreshTimeline();
+  recap_->setDataset(*dataset_);
   bursts_ = dataset_->bursts;
   refreshBursts();
   {
@@ -511,8 +601,10 @@ void MainWindow::refresh() {
   showDetails({});
   const std::array values{dataset_->entries.size(), dataset_->counts[4] + dataset_->counts[5],
                           dataset_->counts[3], dataset_->malformed};
-  for (std::size_t i = 0; i < 4; ++i)
-    metrics_[i]->setText(QString::number(values[i]));
+  for (std::size_t i = 0; i < values.size(); ++i) {
+    metrics_[i]->setText(QString("%1: %2").arg(QString::fromUtf8(metricNames[i])).arg(values[i]));
+    metrics_[i]->setEnabled(values[i] > 0);
+  }
   const auto peak = *std::max_element(dataset_->counts.begin(), dataset_->counts.end());
   for (std::size_t i = 0; i < 7; ++i) {
     barCounts_[i]->setText(QString::number(dataset_->counts[i]));
@@ -532,6 +624,8 @@ void MainWindow::refresh() {
                         .arg(dataset_->entries.size()));
 }
 void MainWindow::configureJson() {
+  if (busy_)
+    return;
   QDialog dialog{this};
   dialog.setWindowTitle("JSON Lines fields");
   QFormLayout layout{&dialog};
@@ -609,7 +703,7 @@ void MainWindow::configureRule() {
                 .source = source.text().toStdString()};
   if (proxy_->activeFilters().contains("alert")) {
     proxy_->setBurst({});
-    clearBurst_->hide();
+    refreshFilterChips();
   }
   if (dataset_)
     bursts_ = rules::find_error_bursts(dataset_->entries, burstRule_);
@@ -629,8 +723,8 @@ void MainWindow::refreshBursts() {
           .arg(sources));
   alerts_->clear();
   alerts_->setVisible(!bursts_.empty());
-  noBursts_->setText(dataset_ ? "No bursts found."
-                              : "Import logs to check for error bursts.");
+  openBurst_->setVisible(!bursts_.empty());
+  noBursts_->setText(dataset_ ? "No bursts found." : "Import logs to check for error bursts.");
   noBursts_->setVisible(bursts_.empty());
   for (const auto& burst : bursts_) {
     alerts_->addItem(
@@ -644,14 +738,11 @@ void MainWindow::refreshBursts() {
 void MainWindow::resetExplorerFilters() {
   proxy_->setBurst({});
   proxy_->setCorrelation({}, {});
-  clearBurst_->hide();
   search_->clear();
   proxy_->setSearch({});
   severity_->setCurrentIndex(0);
   source_->setCurrentIndex(0);
-  from_->clear();
-  through_->clear();
-  applyTimeRange();
+  clearTimeRange();
 }
 
 void MainWindow::showBurst(int index) {
@@ -659,7 +750,7 @@ void MainWindow::showBurst(int index) {
     return;
   resetExplorerFilters();
   proxy_->setBurst(bursts_[static_cast<std::size_t>(index)], alerts_->item(index)->text());
-  clearBurst_->show();
+  refreshFilterChips();
   navigation_->setCurrentRow(1);
   table_->setCurrentIndex(proxy_->index(0, 0));
   table_->setFocus();
@@ -673,9 +764,53 @@ void MainWindow::showCorrelation(const char* key) {
   resetExplorerFilters();
   proxy_->setCorrelation(key, id);
   table_->sortByColumn(0, Qt::AscendingOrder);
-  clearBurst_->show();
+  refreshFilterChips();
   table_->setCurrentIndex(proxy_->index(0, 0));
   table_->setFocus();
+}
+
+void MainWindow::refreshFilterChips() {
+  const auto filters = proxy_->activeFilters();
+  const auto value = [&](const char* key) -> QString {
+    const auto found = filters.find(key);
+    return found == filters.end() ? QString{} : QString::fromStdString(found->second);
+  };
+  const auto search = value("message_contains");
+  const auto severity = value("severity");
+  const auto source = value("source");
+  const auto from = value("from_utc");
+  const auto through = value("through_utc");
+  const auto alert = value("alert");
+  const auto trace = value("trace_id");
+  const auto request = value("request_id");
+  const std::array labels{search.isEmpty() ? QString{} : QString{"Search: %1"}.arg(search),
+                          severity.isEmpty() ? QString{} : severity_->currentText(), source,
+                          from.isEmpty() && through.isEmpty() ? QString{} : QString{"Time range"},
+                          !trace.isEmpty()     ? QString{"Trace: %1"}.arg(trace)
+                          : !request.isEmpty() ? QString{"Request: %1"}.arg(request)
+                          : alert.isEmpty()    ? QString{}
+                                               : QString{"Burst alert"}};
+  const std::array tooltips{
+      labels[0], labels[1], labels[2],
+      QString{"From %1 · Through %2"}.arg(from.isEmpty() ? QString{"any time"} : from,
+                                          through.isEmpty() ? QString{"any time"} : through),
+      alert.isEmpty() ? labels[4] : alert};
+  for (std::size_t i = 0; i < chips_.size(); ++i) {
+    auto* chip = chips_[i];
+    chip->setVisible(!labels[i].isEmpty());
+    auto shortLabel = QFontMetrics{chip->font()}.elidedText(labels[i], Qt::ElideRight, 88);
+    chip->setText(shortLabel.replace("&", "&&") + " ×");
+    const QString description = QString{"Remove filter: %1"}.arg(tooltips[i]);
+    chip->setAccessibleName(description);
+    chip->setToolTip("<qt>" + description.toHtmlEscaped() + "</qt>");
+  }
+  chipRow_->setVisible(!filters.empty());
+}
+
+void MainWindow::clearTimeRange() {
+  from_->clear();
+  through_->clear();
+  applyTimeRange();
 }
 
 void MainWindow::applyTimeRange() {
@@ -690,8 +825,12 @@ void MainWindow::applyTimeRange() {
     error = "From UTC must be earlier than or equal to Through UTC.";
   timeRangeError_->setText(error);
   timeRangeError_->setVisible(!error.isEmpty());
-  if (error.isEmpty())
+  if (error.isEmpty()) {
+    for (auto* button : timelineButtons_)
+      button->setChecked(false);
     proxy_->setTimeRange(from, through);
+    refreshFilterChips();
+  }
 }
 
 void MainWindow::refreshTimeline() {
@@ -769,8 +908,8 @@ void MainWindow::exportReport(bool visibleOnly) {
   if (busy_ || !dataset_)
     return;
   const auto path = QFileDialog::getSaveFileName(
-      this, visibleOnly ? "Export visible records" : "Export session", {}, "JSON report (*.json)",
-      nullptr, QFileDialog::DontConfirmOverwrite);
+      this, visibleOnly ? "Export filtered results" : "Export full session", {},
+      "JSON report (*.json)", nullptr, QFileDialog::DontConfirmOverwrite);
   if (path.isEmpty())
     return;
   exportTo(path, visibleOnly);
@@ -818,6 +957,18 @@ void MainWindow::dropEvent(QDropEvent* event) {
   importFiles(paths);
   event->acceptProposedAction();
 }
+void MainWindow::resizeEvent(QResizeEvent* event) {
+  QMainWindow::resizeEvent(event);
+  if (!splitter_)
+    return;
+  const auto orientation = event->size().width() >= 1100 ? Qt::Horizontal : Qt::Vertical;
+  if (splitter_->orientation() != orientation) {
+    splitter_->setOrientation(orientation);
+    splitter_->setSizes(orientation == Qt::Horizontal ? QList<int>{720, 300}
+                                                      : QList<int>{390, 150});
+  }
+}
+
 void MainWindow::closeEvent(QCloseEvent* event) {
   if (busy_) {
     status_->setText("Please wait for the current import or export before closing.");

@@ -1,5 +1,6 @@
 #include "main_window.hpp"
 #include <QAbstractItemModelTester>
+#include <QAction>
 #include <QComboBox>
 #include <QDialog>
 #include <QDialogButtonBox>
@@ -13,6 +14,7 @@
 #include <QPushButton>
 #include <QSignalSpy>
 #include <QSpinBox>
+#include <QSplitter>
 #include <QTableView>
 #include <QTemporaryDir>
 #include <QTest>
@@ -97,6 +99,99 @@ private slots:
     QCOMPARE(window.logModel()->rowCount(), 13);
     QVERIFY(window.findChild<QLabel*>("statusText")->text().contains("Import failed"));
   }
+  void overviewLinksAndExplorerControls() {
+    MainWindow window;
+    window.show();
+    window.importFiles({LOGINSIGHT_SAMPLE_PATH});
+    QTRY_VERIFY_WITH_TIMEOUT(!window.busy(), 10000);
+    auto* navigation = window.findChild<QListWidget*>("navigation");
+    auto* table = window.findChild<QTableView*>("logTable");
+    auto* splitter = window.findChild<QSplitter*>("explorerSplit");
+    QCOMPARE(splitter->orientation(), Qt::Horizontal);
+
+    window.findChild<QPushButton*>("malformedMetric")->click();
+    QCOMPARE(navigation->currentRow(), 0);
+    QTRY_VERIFY(window.findChild<QTextEdit*>("diagnostics")->hasFocus());
+    window.findChild<QPushButton*>("errorsMetric")->click();
+    QCOMPARE(navigation->currentRow(), 1);
+    QCOMPARE(table->model()->rowCount(), 3);
+    QCOMPARE(window.findChild<QPushButton*>("exportFiltered")->text(),
+             QString{"Export filtered results (3)"});
+    auto* severity = window.findChild<QPushButton*>("severityChip");
+    QVERIFY(severity->isVisible());
+    severity->click();
+    QCOMPARE(table->model()->rowCount(), 13);
+    QVERIFY(!severity->isVisible());
+
+    auto* bucket = window.findChild<QPushButton*>("timelineBucket0");
+    bucket->click();
+    QVERIFY(bucket->isChecked());
+    auto* timeChip = window.findChild<QPushButton*>("timeChip");
+    QVERIFY(timeChip->isVisible());
+    timeChip->click();
+    QVERIFY(!bucket->isChecked());
+    QCOMPARE(table->model()->rowCount(), 13);
+
+    auto* timeControls = window.findChild<QWidget*>("timeControls");
+    QVERIFY(!timeControls->isVisible());
+    auto* timeToggle = window.findChild<QPushButton*>("toggleTimeRange");
+    timeToggle->click();
+    QVERIFY(timeControls->isVisible());
+    window.resize(840, 620);
+    QCOMPARE(window.size(), QSize(840, 620));
+    QCOMPARE(splitter->orientation(), Qt::Vertical);
+    timeToggle->click();
+    auto* search = window.findChild<QLineEdit*>("search");
+    search->setText("atlas");
+    QTRY_VERIFY(window.findChild<QPushButton*>("searchChip")->isVisible());
+    window.findChild<QPushButton*>("clearFilters")->click();
+    QCOMPARE(table->model()->rowCount(), 13);
+    QVERIFY(search->text().isEmpty());
+
+    const auto capture = qEnvironmentVariable("LOGINSIGHT_CAPTURE_DIR");
+    if (!capture.isEmpty()) {
+      table->setCurrentIndex(table->model()->index(0, 0));
+      QApplication::processEvents();
+      QVERIFY(window.grab().save(capture + "/explorer-compact.png"));
+    }
+  }
+  void recapTracksImportedSession() {
+    MainWindow window;
+    window.resize(840, 620);
+    window.show();
+    auto* navigation = window.findChild<QListWidget*>("navigation");
+    navigation->setCurrentRow(2);
+    auto* summary = window.findChild<QLabel*>("recapSummary");
+    auto* errors = window.findChild<QLabel*>("recapSeverity4");
+    QVERIFY(summary->text().contains("Import logs"));
+    QVERIFY(!errors->isVisible());
+
+    window.importFiles({LOGINSIGHT_SAMPLE_PATH});
+    QTRY_VERIFY_WITH_TIMEOUT(!window.busy(), 10000);
+    QCOMPARE(summary->text(), QString{"13 valid entries across 3 sources · 3 malformed records"});
+    QCOMPARE(errors->text(), QString{"2 (15.4%)"});
+    QVERIFY(errors->isVisible());
+    QCOMPARE(window.findChild<QLabel*>("recapSourceTotal0")->text(), QString{"5"});
+    QCOMPARE(window.findChild<QLabel*>("recapSourceTotal2")->text(), QString{"3"});
+    QVERIFY(!window.findChild<QLabel*>("recapSourceTotal3")->isVisible());
+    QCOMPARE(window.size(), QSize(840, 620));
+    const auto capture = qEnvironmentVariable("LOGINSIGHT_CAPTURE_DIR");
+    if (!capture.isEmpty()) {
+      QApplication::processEvents();
+      QVERIFY(window.grab().save(capture + "/recap.png"));
+    }
+
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const auto empty = directory.filePath("empty.log");
+    QFile file{empty};
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    file.close();
+    window.importFiles({empty});
+    QTRY_VERIFY_WITH_TIMEOUT(!window.busy(), 10000);
+    QVERIFY(summary->text().startsWith("0 valid entries"));
+    QVERIFY(!errors->isVisible());
+  }
   void jsonLinesTimelineAndTimeRange() {
     QTemporaryDir directory;
     QVERIFY(directory.isValid());
@@ -159,7 +254,7 @@ private slots:
       dialog->findChild<QLineEdit*>("jsonMessagePath")->setText("msg");
       dialog->findChild<QDialogButtonBox*>()->button(QDialogButtonBox::Ok)->click();
     });
-    window.findChild<QPushButton*>("jsonFields")->click();
+    window.findChild<QAction*>("jsonFields")->trigger();
     window.importFiles({b, a});
     QTRY_VERIFY_WITH_TIMEOUT(!window.busy(), 10000);
     auto* table = window.findChild<QTableView*>("logTable");

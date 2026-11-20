@@ -77,18 +77,21 @@ not been verified.
 
 ### Desktop
 
-1. Click **Load Sample Logs**, or **Import Logs** to select one or several files.
-2. Review valid-entry counts, severity distribution and malformed-record diagnostics.
-3. Open **Log Explorer**. Search message text, select a severity/source, or click a column
-   header to sort. Click a timeline bucket or enter one or both UTC bounds and select **Apply**.
+1. Click **Load Sample Logs**, or choose **Import Logs → Choose log files** to select one or several files.
+2. Review counts, alerts and import diagnostics in **Overview**. Open **Recap** for the
+   severity donut chart and the five sources with the most entries in the current session.
+3. Open **Log Explorer** or click a count on the overview. The **Malformed** count jumps to
+   diagnostics. Search message text, select a severity or source, or click a column header to sort.
+   Click a timeline bucket or open **Time range**, enter one or both UTC bounds, and select **Apply**.
    Both bounds are inclusive, and the time range combines with the other filters. Use
-   **Clear range** to show all times. Select a row to inspect its message, input path and raw record.
-   If it includes a request or trace ID, choose **Show request events** or **Show trace events**
-   to see exact matches across all sources in chronological order. Use **Clear drill-down**
-   to remove the ID or alert restriction.
-4. Select **Export JSON** and choose a new destination. Export includes the entire session,
+   the filter chips to remove individual filters, or **Clear all** to reset them. Select a row
+   to inspect its message, input path and raw record in the resizable details pane.
+   If it includes a request or trace ID, choose **Follow request** or **Follow trace**
+   to see exact matches across all sources in chronological order. Remove the corresponding
+   filter chip to exit the drill-down.
+4. Select **Export full session** and choose a new destination. Export includes the entire session,
    regardless of table filters, along with failed-file diagnostics and malformed records. Use
-   **Export visible records** in Log Explorer to save only matching rows in their current sort order,
+   **Export filtered results (N)** in Log Explorer to save only matching rows in their current sort order,
    with the active filters and the source path for each record.
 
 Each import replaces the current session; selecting multiple files creates one session.
@@ -180,7 +183,7 @@ YYYY-MM-DD HH:MM:SS LEVEL SOURCE MESSAGE
 
 Import a `.jsonl` or `.ndjson` file through the desktop or with `loginsight analyse <file>`.
 Each nonblank line must be a JSON object. The default string fields are `timestamp`, `level`,
-`source`, and `message`. In the desktop **JSON fields** dialog, use dots for nested paths, such
+`source`, and `message`. Under **Import Logs → JSON field mappings**, use dots for nested paths, such
 as `event.ts`, or leave the source mapping blank to use the filename stem. Mappings apply to
 subsequent imports until the app closes. The CLI uses the default names.
 

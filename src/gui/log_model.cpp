@@ -2,7 +2,7 @@
 #include <QFont>
 #include <algorithm>
 #include <climits>
-#include <set>
+#include <map>
 #include <stdexcept>
 
 namespace loginsight::gui {
@@ -35,7 +35,7 @@ std::shared_ptr<const Dataset> load_files(const QStringList& paths, std::stop_to
   auto dataset = std::make_shared<Dataset>();
   const app::AnalysisService service{std::move(config)};
   dataset->files.reserve(static_cast<std::size_t>(paths.size()));
-  std::set<QString> sources;
+  std::map<QString, std::size_t> sources;
   for (const auto& path : paths) {
     budget.checkCancelled();
     auto file = service.analyze(std::filesystem::path{path.toStdString()}, &budget);
@@ -64,7 +64,7 @@ std::shared_ptr<const Dataset> load_files(const QStringList& paths, std::stop_to
     for (const auto& entry : file.parsed.entries) {
       budget.checkCancelled();
       dataset->entries.push_back(&entry);
-      sources.insert(QString::fromStdString(entry.source.name));
+      ++sources[QString::fromStdString(entry.source.name)];
     }
     // Keep the overview lightweight; the complete errors remain in JSON export.
     const auto shown = std::min(file.parsed.errors.size(), std::size_t{20});
@@ -80,8 +80,17 @@ std::shared_ptr<const Dataset> load_files(const QStringList& paths, std::stop_to
   if (dataset->entries.size() > static_cast<std::size_t>(INT_MAX)) {
     throw std::runtime_error("too many entries for the desktop table");
   }
-  for (const auto& source : sources)
+  std::vector<std::pair<QString, std::size_t>> top;
+  top.reserve(sources.size());
+  for (const auto& [source, count] : sources) {
     dataset->sources.push_back(source);
+    top.emplace_back(source, count);
+  }
+  const auto end = top.begin() + static_cast<std::ptrdiff_t>(std::min(top.size(), std::size_t{5}));
+  std::partial_sort(top.begin(), end, top.end(), [](const auto& a, const auto& b) {
+    return a.second != b.second ? a.second > b.second : a.first < b.first;
+  });
+  dataset->topSources.assign(top.begin(), end);
   dataset->bursts = rules::find_error_bursts(dataset->entries, rule);
   budget.checkCancelled();
   if (progress)
@@ -189,7 +198,9 @@ core::LogAttributes LogFilter::activeFilters() const {
     filters.emplace("message_contains", search_.toStdString());
   if (!source_.isEmpty())
     filters.emplace("source", source_.toStdString());
-  if (level_ >= 0)
+  if (level_ == errorAndCritical)
+    filters.emplace("severity", "error_or_critical");
+  else if (level_ >= 0)
     filters.emplace("severity", core::to_string(static_cast<core::LogLevel>(level_)));
   if (from_)
     filters.emplace("from_utc", app::format_timestamp(*from_));
@@ -219,7 +230,9 @@ bool LogFilter::filterAcceptsRow(int row, const QModelIndex& parent) const {
   }
   return (burst_.empty() || burst_.contains(item)) && (!from_ || item->timestamp >= *from_) &&
          (!through_ || item->timestamp <= *through_) &&
-         (level_ < 0 || static_cast<int>(item->level) == level_) &&
+         (level_ == errorAndCritical
+              ? item->level == core::LogLevel::error || item->level == core::LogLevel::critical
+              : level_ < 0 || static_cast<int>(item->level) == level_) &&
          (source_.isEmpty() || QString::fromStdString(item->source.name) == source_) &&
          (search_.isEmpty() ||
           QString::fromStdString(item->message).contains(search_, Qt::CaseInsensitive));

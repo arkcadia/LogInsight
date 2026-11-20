@@ -20,6 +20,7 @@ struct Dataset {
   std::vector<app::AnalysisResult> files;
   std::vector<const core::LogEntry*> entries;
   QStringList sources;
+  std::vector<std::pair<QString, std::size_t>> topSources;
   std::array<std::size_t, 7> counts{};
   std::size_t importedFiles{};
   std::size_t malformed{};
@@ -49,6 +50,7 @@ private:
 
 class LogFilter final : public QSortFilterProxyModel {
 public:
+  static constexpr int errorAndCritical = 7;
   explicit LogFilter(QObject* parent = nullptr);
   void setSearch(QString search);
   void setSeverity(int level);

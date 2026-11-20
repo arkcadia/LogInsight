@@ -14,8 +14,11 @@ class QTextEdit;
 class QLineEdit;
 class QComboBox;
 class QListWidget;
+class QSplitter;
+class QResizeEvent;
 
 namespace loginsight::gui {
+class RecapPanel;
 class MainWindow final : public QMainWindow {
 public:
   MainWindow();
@@ -28,12 +31,15 @@ public:
 protected:
   void dragEnterEvent(QDragEnterEvent* event) override;
   void dropEvent(QDropEvent* event) override;
+  void resizeEvent(QResizeEvent* event) override;
   void closeEvent(QCloseEvent* event) override;
 
 private:
   void refresh();
   void refreshTimeline();
   void applyTimeRange();
+  void clearTimeRange();
+  void refreshFilterChips();
   void showBurst(int index);
   void setBusy(bool busy, const QString& text);
   void exportReport(bool visibleOnly = false);
@@ -52,7 +58,9 @@ private:
   LogModel* model_{};
   LogFilter* proxy_{};
   QStackedWidget* pages_{};
+  RecapPanel* recap_{};
   QTableView* table_{};
+  QSplitter* splitter_{};
   QTextEdit* details_{};
   QTextEdit* diagnostics_{};
   QLabel* status_{};
@@ -75,12 +83,14 @@ private:
   QListWidget* alerts_{};
   QLabel* noBursts_{};
   QLabel* ruleDescription_{};
-  QPushButton* clearBurst_{};
+  QWidget* chipRow_{};
+  std::array<QPushButton*, 5> chips_{};
+  QWidget* timeControls_{};
   QPushButton* exportVisible_{};
   QPushButton* trace_{};
   QPushButton* request_{};
-  QPushButton* mapping_{};
   QPushButton* ruleSettings_{};
+  QPushButton* openBurst_{};
   parsers::JsonParserConfig jsonConfig_;
   rules::BurstRule burstRule_;
   std::vector<rules::ErrorBurst> bursts_;
@@ -89,7 +99,7 @@ private:
   QPushButton* samples_{};
   QPushButton* export_{};
   QProgressBar* progress_{};
-  std::array<QLabel*, 4> metrics_{};
+  std::array<QPushButton*, 4> metrics_{};
   std::array<QProgressBar*, 7> bars_{};
   std::array<QLabel*, 7> barCounts_{};
 };

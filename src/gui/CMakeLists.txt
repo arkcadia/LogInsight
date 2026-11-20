@@ -1,4 +1,4 @@
-add_library(loginsight_gui_components STATIC log_model.cpp main_window.cpp)
+add_library(loginsight_gui_components STATIC log_model.cpp main_window.cpp recap_panel.cpp)
 target_include_directories(loginsight_gui_components PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(loginsight_gui_components PUBLIC LogInsight::application LogInsight::rules Qt6::Widgets Qt6::Concurrent)
 loginsight_enable_warnings(loginsight_gui_components)

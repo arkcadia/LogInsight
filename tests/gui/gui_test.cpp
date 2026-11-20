@@ -5,13 +5,16 @@
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QFile>
+#include <QInputDialog>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QMenu>
 #include <QPushButton>
+#include <QSettings>
 #include <QSignalSpy>
 #include <QSpinBox>
 #include <QSplitter>
@@ -155,6 +158,53 @@ private slots:
       QVERIFY(window.grab().save(capture + "/explorer-compact.png"));
     }
   }
+  void savesFiltersAcrossWindowsAndBookmarksWithinSession() {
+    QTemporaryDir settingsDirectory;
+    QVERIFY(settingsDirectory.isValid());
+    QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDirectory.path());
+    {
+      MainWindow window;
+      window.show();
+      window.importFiles({LOGINSIGHT_SAMPLE_PATH});
+      QTRY_VERIFY_WITH_TIMEOUT(!window.busy(), 10000);
+      window.findChild<QPushButton*>("errorsMetric")->click();
+      auto* menu = window.findChild<QPushButton*>("savedViews")->menu();
+      QVERIFY(QMetaObject::invokeMethod(menu, "aboutToShow"));
+      QTimer::singleShot(0, &window, [&] {
+        auto* dialog = window.findChild<QInputDialog*>();
+        dialog->setTextValue("Incident errors");
+        dialog->accept();
+      });
+      menu->actions().front()->trigger();
+    }
+    MainWindow window;
+    window.show();
+    window.importFiles({LOGINSIGHT_SAMPLE_PATH});
+    QTRY_VERIFY_WITH_TIMEOUT(!window.busy(), 10000);
+    window.findChild<QListWidget*>("navigation")->setCurrentRow(1);
+    auto* menu = window.findChild<QPushButton*>("savedViews")->menu();
+    QVERIFY(QMetaObject::invokeMethod(menu, "aboutToShow"));
+    auto* apply = menu->actions()[2]->menu();
+    QVERIFY(apply != nullptr);
+    QCOMPARE(apply->actions().front()->text(), QString{"Incident errors"});
+    apply->actions().front()->trigger();
+
+    auto* table = window.findChild<QTableView*>("logTable");
+    QCOMPARE(table->model()->rowCount(), 3);
+    table->setCurrentIndex(table->model()->index(1, 0));
+    auto* bookmark = window.findChild<QPushButton*>("bookmarkRecord");
+    bookmark->click();
+    QCOMPARE(bookmark->text(), QString{"Remove bookmark"});
+    QVERIFY(QMetaObject::invokeMethod(menu, "aboutToShow"));
+    menu->findChild<QAction*>("bookmarksOnly")->trigger();
+    QCOMPARE(table->model()->rowCount(), 1);
+    table->setCurrentIndex(table->model()->index(0, 0));
+    bookmark->click();
+    QCOMPARE(table->model()->rowCount(), 0);
+    window.findChild<QPushButton*>("bookmarkChip")->click();
+    QCOMPARE(table->model()->rowCount(), 3);
+  }
+
   void importsCsvWithDesktopColumnMapping() {
     QTemporaryDir directory;
     QVERIFY(directory.isValid());

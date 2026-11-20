@@ -2,6 +2,7 @@
 #include "log_model.hpp"
 #include <QFutureWatcher>
 #include <QMainWindow>
+#include <QVariantMap>
 #include <array>
 #include <utility>
 
@@ -13,6 +14,7 @@ class QTableView;
 class QTextEdit;
 class QLineEdit;
 class QComboBox;
+class QMenu;
 class QListWidget;
 class QSplitter;
 class QResizeEvent;
@@ -40,6 +42,11 @@ private:
   void applyTimeRange();
   void clearTimeRange();
   void refreshFilterChips();
+  void populateViewsMenu(QMenu& menu);
+  void saveView();
+  void applyView(const QVariantMap& filters);
+  void setBookmarkScope(bool enabled);
+  void toggleBookmark();
   void showBurst(int index);
   void setBusy(bool busy, const QString& text);
   void exportReport(bool visibleOnly = false);
@@ -85,10 +92,13 @@ private:
   QLabel* noBursts_{};
   QLabel* ruleDescription_{};
   QWidget* chipRow_{};
-  std::array<QPushButton*, 5> chips_{};
+  std::array<QPushButton*, 6> chips_{};
   QWidget* timeControls_{};
   QPushButton* exportVisible_{};
   QPushButton* trace_{};
+  QPushButton* bookmark_{};
+  std::set<const core::LogEntry*> bookmarks_;
+  bool bookmarksOnly_{};
   QPushButton* request_{};
   QPushButton* ruleSettings_{};
   QPushButton* openBurst_{};

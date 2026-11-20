@@ -58,6 +58,7 @@ public:
   void setSource(QString source);
   void setBurst(std::span<const core::LogEntry* const> burst, const QString& description = {});
   void setCorrelation(std::string key, std::string value);
+  void setBookmarks(const std::set<const core::LogEntry*>& entries, bool enabled);
   [[nodiscard]] core::LogAttributes activeFilters() const;
   void setTimeRange(std::optional<core::LogTimestamp> from,
                     std::optional<core::LogTimestamp> through);
@@ -70,6 +71,7 @@ private:
   QString source_;
   int level_{-1};
   std::set<const core::LogEntry*> burst_;
+  std::optional<std::set<const core::LogEntry*>> bookmarks_;
   QString burstDescription_;
   std::string correlationKey_;
   std::string correlationId_;

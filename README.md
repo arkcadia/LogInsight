@@ -90,6 +90,10 @@ not been verified.
    If it includes a request or trace ID, choose **Follow request** or **Follow trace**
    to see exact matches across all sources in chronological order. Remove the corresponding
    filter chip to exit the drill-down.
+   Use **Saved views** to save, restore, or delete named filter presets on this computer.
+   Presets remain available after restarting. Alert and bookmark selections are session-specific.
+   Use **Bookmark** in record details, then **Saved views → Bookmarks only** to revisit marked
+   records. Bookmarks are cleared when a new import replaces the session.
 4. Select **Export full session** and choose a new destination. Export includes the entire session,
    regardless of table filters, along with failed-file diagnostics and malformed records. Use
    **Export filtered results (N)** in Log Explorer to save only matching rows in their current sort order,

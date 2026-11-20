@@ -192,6 +192,13 @@ void LogFilter::setCorrelation(std::string key, std::string value) {
   correlationId_ = std::move(value);
   invalidate();
 }
+void LogFilter::setBookmarks(const std::set<const core::LogEntry*>& entries, bool enabled) {
+  if (enabled)
+    bookmarks_ = entries;
+  else
+    bookmarks_.reset();
+  invalidate();
+}
 core::LogAttributes LogFilter::activeFilters() const {
   core::LogAttributes filters;
   if (!search_.isEmpty())
@@ -206,6 +213,8 @@ core::LogAttributes LogFilter::activeFilters() const {
     filters.emplace("from_utc", app::format_timestamp(*from_));
   if (through_)
     filters.emplace("through_utc", app::format_timestamp(*through_));
+  if (bookmarks_)
+    filters.emplace("bookmarked_only", "true");
   if (!burst_.empty())
     filters.emplace("alert", burstDescription_.toStdString());
   if (!correlationKey_.empty())
@@ -228,8 +237,8 @@ bool LogFilter::filterAcceptsRow(int row, const QModelIndex& parent) const {
     if (value == item->attributes.end() || value->second != correlationId_)
       return false;
   }
-  return (burst_.empty() || burst_.contains(item)) && (!from_ || item->timestamp >= *from_) &&
-         (!through_ || item->timestamp <= *through_) &&
+  return (!bookmarks_ || bookmarks_->contains(item)) && (burst_.empty() || burst_.contains(item)) &&
+         (!from_ || item->timestamp >= *from_) && (!through_ || item->timestamp <= *through_) &&
          (level_ == errorAndCritical
               ? item->level == core::LogLevel::error || item->level == core::LogLevel::critical
               : level_ < 0 || static_cast<int>(item->level) == level_) &&

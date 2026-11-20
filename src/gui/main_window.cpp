@@ -13,17 +13,20 @@
 #include <QFontMetrics>
 #include <QFormLayout>
 #include <QHeaderView>
+#include <QInputDialog>
 #include <QKeySequence>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QMenu>
+#include <QMessageBox>
 #include <QMimeData>
 #include <QProgressBar>
 #include <QPromise>
 #include <QPushButton>
 #include <QResizeEvent>
 #include <QScrollArea>
+#include <QSettings>
 #include <QSignalBlocker>
 #include <QSpinBox>
 #include <QSplitter>
@@ -39,6 +42,7 @@
 
 namespace loginsight::gui {
 namespace {
+constexpr auto savedViewsKey = "explorer/savedFilters";
 constexpr std::array metricNames{"Entries", "Errors + critical", "Warnings", "Malformed"};
 
 QLabel* label(const QString& text, const char* style = "") {
@@ -261,6 +265,13 @@ MainWindow::MainWindow() {
   explorerCount_ = label("No entries", "color: #acafc2;");
   actions->addWidget(explorerCount_);
   actions->addStretch();
+  auto* views = new QPushButton{"Saved views"};
+  views->setObjectName("savedViews");
+  auto* viewsMenu = new QMenu{views};
+  views->setMenu(viewsMenu);
+  connect(viewsMenu, &QMenu::aboutToShow, this,
+          [this, viewsMenu] { populateViewsMenu(*viewsMenu); });
+  actions->addWidget(views);
   exportVisible_ = new QPushButton{"Export filtered results (0)"};
   exportVisible_->setObjectName("exportFiltered");
   exportVisible_->setEnabled(false);
@@ -296,8 +307,8 @@ MainWindow::MainWindow() {
   auto* chipLayout = new QHBoxLayout(chipRow_);
   chipLayout->setContentsMargins(0, 0, 0, 0);
   chipLayout->setSpacing(5);
-  const QStringList chipIds{"searchChip", "severityChip", "sourceChip", "timeChip",
-                            "drillDownChip"};
+  const QStringList chipIds{"searchChip", "severityChip",  "sourceChip",
+                            "timeChip",   "drillDownChip", "bookmarkChip"};
   for (std::size_t i = 0; i < chips_.size(); ++i) {
     auto* chip = chips_[i] = new QPushButton;
     chip->setObjectName(chipIds[static_cast<qsizetype>(i)]);
@@ -324,6 +335,7 @@ MainWindow::MainWindow() {
     proxy_->setCorrelation({}, {});
     refreshFilterChips();
   });
+  connect(chips_[5], &QPushButton::clicked, this, [this] { setBookmarkScope(false); });
   connect(clearAll, &QPushButton::clicked, this, &MainWindow::resetExplorerFilters);
   auto* timeline = new QGridLayout;
   logs->addWidget(label("Session timeline · UTC · bars show error and critical counts"));
@@ -418,7 +430,16 @@ MainWindow::MainWindow() {
   auto* inspectorLayout = new QVBoxLayout(inspector);
   inspectorLayout->setContentsMargins(8, 0, 0, 0);
   inspectorLayout->setSpacing(5);
-  inspectorLayout->addWidget(label("Record details", "font-weight: 600;"));
+  auto* inspectorHeader = new QHBoxLayout;
+  inspectorHeader->addWidget(label("Record details", "font-weight: 600;"));
+  inspectorHeader->addStretch();
+  bookmark_ = new QPushButton{"Bookmark"};
+  bookmark_->setObjectName("bookmarkRecord");
+  bookmark_->setEnabled(false);
+  bookmark_->setStyleSheet("padding: 4px 7px;");
+  inspectorHeader->addWidget(bookmark_);
+  inspectorLayout->addLayout(inspectorHeader);
+  connect(bookmark_, &QPushButton::clicked, this, &MainWindow::toggleBookmark);
   details_ = textPanel("Select an entry to inspect its message, file path and raw log record.");
   details_->setObjectName("details");
   details_->setAccessibleName("Record details");
@@ -603,6 +624,7 @@ void MainWindow::loadSamples() {
 }
 void MainWindow::refresh() {
   resetExplorerFilters();
+  bookmarks_.clear();
   model_->setDataset(dataset_);
   refreshTimeline();
   recap_->setDataset(*dataset_);
@@ -787,6 +809,126 @@ void MainWindow::refreshBursts() {
   }
 }
 
+void MainWindow::populateViewsMenu(QMenu& menu) {
+  for (auto* action : menu.actions()) {
+    if (auto* submenu = action->menu())
+      delete submenu;
+  }
+  menu.clear();
+  auto* save = menu.addAction("Save current filters…", this, &MainWindow::saveView);
+  const auto filters = proxy_->activeFilters();
+  save->setEnabled(!filters.contains("alert") && !bookmarksOnly_ &&
+                   (!filters.empty() || !search_->text().isEmpty()));
+  auto* bookmarks = menu.addAction(QString("Bookmarks only (%1)").arg(bookmarks_.size()));
+  bookmarks->setObjectName("bookmarksOnly");
+  bookmarks->setCheckable(true);
+  bookmarks->setChecked(bookmarksOnly_);
+  bookmarks->setEnabled(dataset_ != nullptr);
+  connect(bookmarks, &QAction::toggled, this, &MainWindow::setBookmarkScope);
+  QSettings settings{QSettings::IniFormat, QSettings::UserScope, "LogInsight", "LogInsight"};
+  const auto views = settings.value(savedViewsKey).toMap();
+  if (views.empty())
+    return;
+  auto* apply = menu.addMenu("Apply saved filters");
+  auto* remove = menu.addMenu("Delete saved filters");
+  for (auto it = views.cbegin(); it != views.cend(); ++it) {
+    const auto name = it.key();
+    const auto filtersToApply = it.value().toMap();
+    auto caption = name;
+    caption.replace("&", "&&");
+    apply->addAction(caption, this, [this, filtersToApply] { applyView(filtersToApply); });
+    remove->addAction(caption, this, [this, name] {
+      if (QMessageBox::question(this, "Delete saved filters",
+                                QString{"Delete the saved view “%1”?"}.arg(name.toHtmlEscaped())) !=
+          QMessageBox::Yes)
+        return;
+      QSettings writable{QSettings::IniFormat, QSettings::UserScope, "LogInsight", "LogInsight"};
+      auto latest = writable.value(savedViewsKey).toMap();
+      latest.remove(name);
+      writable.setValue(savedViewsKey, latest);
+      writable.sync();
+      if (writable.status() != QSettings::NoError)
+        QMessageBox::warning(this, "Saved views", "Could not update the saved views file.");
+    });
+  }
+}
+
+void MainWindow::saveView() {
+  if (bookmarksOnly_ || proxy_->activeFilters().contains("alert"))
+    return;
+  proxy_->setSearch(search_->text());
+  refreshFilterChips();
+  QVariantMap filters;
+  for (const auto& [key, value] : proxy_->activeFilters())
+    filters.insert(QString::fromStdString(key), QString::fromStdString(value));
+  if (filters.empty())
+    return;
+  bool accepted{};
+  const auto name = QInputDialog::getText(this, "Save current filters", "View name",
+                                          QLineEdit::Normal, {}, &accepted)
+                        .trimmed();
+  if (!accepted || name.isEmpty())
+    return;
+  QSettings settings{QSettings::IniFormat, QSettings::UserScope, "LogInsight", "LogInsight"};
+  auto views = settings.value(savedViewsKey).toMap();
+  if (views.contains(name)) {
+    QMessageBox::warning(this, "Saved views", "A view with this name already exists.");
+    return;
+  }
+  views.insert(name, filters);
+  settings.setValue(savedViewsKey, views);
+  settings.sync();
+  if (settings.status() != QSettings::NoError)
+    QMessageBox::warning(this, "Saved views", "Could not update the saved views file.");
+}
+
+void MainWindow::applyView(const QVariantMap& filters) {
+  resetExplorerFilters();
+  search_->setText(filters.value("message_contains").toString());
+  proxy_->setSearch(search_->text());
+  const auto source = filters.value("source").toString();
+  if (!source.isEmpty()) {
+    int index = source_->findData(source);
+    if (index < 0) {
+      source_->addItem(source, source);
+      index = source_->count() - 1;
+    }
+    source_->setCurrentIndex(index);
+  }
+  const auto severity = filters.value("severity").toString().toStdString();
+  if (severity == "error_or_critical")
+    severity_->setCurrentIndex(severity_->findData(LogFilter::errorAndCritical));
+  else if (const auto level = core::log_level_from_string(severity))
+    severity_->setCurrentIndex(severity_->findData(static_cast<int>(*level)));
+  for (const auto* key : {"trace_id", "request_id"}) {
+    const auto id = filters.value(key).toString();
+    if (!id.isEmpty()) {
+      proxy_->setCorrelation(key, id.toStdString());
+      break;
+    }
+  }
+  from_->setText(filters.value("from_utc").toString());
+  through_->setText(filters.value("through_utc").toString());
+  applyTimeRange();
+}
+
+void MainWindow::setBookmarkScope(bool enabled) {
+  bookmarksOnly_ = enabled;
+  proxy_->setBookmarks(bookmarks_, enabled);
+  refreshFilterChips();
+}
+
+void MainWindow::toggleBookmark() {
+  const auto* entry = model_->entry(proxy_->mapToSource(table_->currentIndex()).row());
+  if (!entry)
+    return;
+  if (!bookmarks_.erase(entry))
+    bookmarks_.insert(entry);
+  if (bookmarksOnly_)
+    setBookmarkScope(true);
+  showDetails(table_->currentIndex());
+}
+
 void MainWindow::resetExplorerFilters() {
   proxy_->setBurst({});
   proxy_->setCorrelation({}, {});
@@ -794,6 +936,7 @@ void MainWindow::resetExplorerFilters() {
   proxy_->setSearch({});
   severity_->setCurrentIndex(0);
   source_->setCurrentIndex(0);
+  setBookmarkScope(false);
   clearTimeRange();
 }
 
@@ -835,22 +978,28 @@ void MainWindow::refreshFilterChips() {
   const auto alert = value("alert");
   const auto trace = value("trace_id");
   const auto request = value("request_id");
+  const bool bookmarksOnly = filters.contains("bookmarked_only");
   const std::array labels{search.isEmpty() ? QString{} : QString{"Search: %1"}.arg(search),
-                          severity.isEmpty() ? QString{} : severity_->currentText(), source,
+                          severity.isEmpty() ? QString{} : severity_->currentText(),
+                          source,
                           from.isEmpty() && through.isEmpty() ? QString{} : QString{"Time range"},
                           !trace.isEmpty()     ? QString{"Trace: %1"}.arg(trace)
                           : !request.isEmpty() ? QString{"Request: %1"}.arg(request)
                           : alert.isEmpty()    ? QString{}
-                                               : QString{"Burst alert"}};
+                                               : QString{"Burst alert"},
+                          bookmarksOnly ? QString{"Bookmarks"} : QString{}};
   const std::array tooltips{
-      labels[0], labels[1], labels[2],
+      labels[0],
+      labels[1],
+      labels[2],
       QString{"From %1 · Through %2"}.arg(from.isEmpty() ? QString{"any time"} : from,
                                           through.isEmpty() ? QString{"any time"} : through),
-      alert.isEmpty() ? labels[4] : alert};
+      alert.isEmpty() ? labels[4] : alert,
+      labels[5]};
   for (std::size_t i = 0; i < chips_.size(); ++i) {
     auto* chip = chips_[i];
     chip->setVisible(!labels[i].isEmpty());
-    auto shortLabel = QFontMetrics{chip->font()}.elidedText(labels[i], Qt::ElideRight, 88);
+    auto shortLabel = QFontMetrics{chip->font()}.elidedText(labels[i], Qt::ElideRight, 72);
     chip->setText(shortLabel.replace("&", "&&") + " ×");
     const QString description = QString{"Remove filter: %1"}.arg(tooltips[i]);
     chip->setAccessibleName(description);
@@ -942,6 +1091,8 @@ void MainWindow::refreshTimeline() {
 void MainWindow::showDetails(const QModelIndex& index) {
   const auto mapped = proxy_->mapToSource(index);
   const auto* entry = model_->entry(mapped.row());
+  bookmark_->setEnabled(entry != nullptr);
+  bookmark_->setText(entry && bookmarks_.contains(entry) ? "Remove bookmark" : "Bookmark");
   trace_->setVisible(entry && entry->attributes.contains("trace_id"));
   request_->setVisible(entry && entry->attributes.contains("request_id"));
   if (!index.isValid() || !entry) {

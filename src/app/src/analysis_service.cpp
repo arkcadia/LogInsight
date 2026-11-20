@@ -82,16 +82,52 @@ std::string format_timestamp(core::LogTimestamp timestamp) {
 
 namespace {
 using Json = nlohmann::json;
-void emit(std::ostream& out, const Json& value) {
+void redact_values(Json& value, std::span<const std::string> terms) {
+  if (value.is_structured()) {
+    for (auto& child : value)
+      redact_values(child, terms);
+    return;
+  }
+  auto* field = value.get_ptr<std::string*>();
+  if (!field)
+    return;
+  std::string_view remaining{*field};
+  std::string masked;
+  for (;;) {
+    auto position = std::string_view::npos;
+    std::size_t length{};
+    for (const auto& term : terms) {
+      if (term.empty())
+        continue;
+      const auto found = remaining.find(term);
+      if (found < position ||
+          (found == position && found != std::string_view::npos && term.size() > length)) {
+        position = found;
+        length = term.size();
+      }
+    }
+    if (position == std::string_view::npos)
+      break;
+    masked.append(remaining.substr(0, position));
+    masked += "[REDACTED]";
+    remaining.remove_prefix(position + length);
+  }
+  if (!masked.empty())
+    *field = masked.append(remaining);
+}
+
+void emit(std::ostream& out, Json value, std::span<const std::string> redact) {
+  if (!redact.empty())
+    redact_values(value, redact);
   // Display/export invalid UTF-8 as replacement characters rather than aborting an import.
   out << value.dump(-1, ' ', false, Json::error_handler_t::replace);
 }
-Json entry_json(const core::LogEntry& entry) {
+Json entry_json(const core::LogEntry& entry, bool redact) {
   return {{"timestamp", format_timestamp(entry.timestamp)},
           {"level", core::to_string(entry.level)},
           {"source", entry.source.name},
           {"message", entry.message},
-          {"raw", entry.rawContent},
+          {"raw", redact ? std::string{} : entry.rawContent},
           {"attributes", entry.attributes}};
 }
 
@@ -104,7 +140,8 @@ struct TemporaryDirectory {
 };
 } // namespace
 
-void write_json_report(std::ostream& out, std::span<const AnalysisResult> results) {
+void write_json_report(std::ostream& out, std::span<const AnalysisResult> results,
+                       std::span<const std::string> redact) {
   out << "{\"schema_version\":1,\"files\":[";
   bool first_file = true;
   for (const auto& file : results) {
@@ -112,27 +149,29 @@ void write_json_report(std::ostream& out, std::span<const AnalysisResult> result
       out << ',';
     first_file = false;
     out << "{\"path\":";
-    emit(out, file.path.string());
+    emit(out, file.path.string(), redact);
     out << ",\"completed\":" << (file.completed() ? "true" : "false") << ",\"diagnostic\":";
-    emit(out, file.diagnostic);
+    emit(out, file.diagnostic, redact);
     const auto& s = file.summary;
     out << ",\"summary\":";
-    emit(out, Json{{"valid_entries", s.validEntryCount},
-                   {"malformed_records", s.malformedLineCount},
-                   {"trace", s.traceCount},
-                   {"debug", s.debugCount},
-                   {"info", s.infoCount},
-                   {"warning", s.warningCount},
-                   {"error", s.errorCount},
-                   {"critical", s.criticalCount},
-                   {"unknown", s.unknownCount}});
+    emit(out,
+         Json{{"valid_entries", s.validEntryCount},
+              {"malformed_records", s.malformedLineCount},
+              {"trace", s.traceCount},
+              {"debug", s.debugCount},
+              {"info", s.infoCount},
+              {"warning", s.warningCount},
+              {"error", s.errorCount},
+              {"critical", s.criticalCount},
+              {"unknown", s.unknownCount}},
+         redact);
     out << ",\"entries\":[";
     bool first = true;
     for (const auto& e : file.parsed.entries) {
       if (!first)
         out << ',';
       first = false;
-      emit(out, entry_json(e));
+      emit(out, entry_json(e, !redact.empty()), redact);
     }
     out << "],\"malformed_records\":[";
     first = true;
@@ -140,7 +179,11 @@ void write_json_report(std::ostream& out, std::span<const AnalysisResult> result
       if (!first)
         out << ',';
       first = false;
-      emit(out, Json{{"line", e.lineNumber}, {"raw", e.rawContent}, {"reason", e.message}});
+      emit(out,
+           Json{{"line", e.lineNumber},
+                {"raw", redact.empty() ? e.rawContent : std::string{}},
+                {"reason", e.message}},
+           redact);
     }
     out << "]}";
   }
@@ -180,27 +223,33 @@ void save_report(const std::filesystem::path& destination, const auto& write) {
 } // namespace
 
 void save_json_report(const std::filesystem::path& destination,
-                      std::span<const AnalysisResult> results) {
-  save_report(destination, [&](auto& out) { write_json_report(out, results); });
+                      std::span<const AnalysisResult> results,
+                      std::span<const std::string> redact) {
+  save_report(destination, [&](auto& out) { write_json_report(out, results, redact); });
+}
+
+void write_visible_report(std::ostream& out, std::span<const core::LogEntry* const> entries,
+                          const core::LogAttributes& filters, std::span<const std::string> redact) {
+  out << "{\"schema_version\":1,\"scope\":\"visible\",\"filters\":";
+  emit(out, filters, redact);
+  out << ",\"entries\":[";
+  bool first = true;
+  for (const auto* entry : entries) {
+    if (!first)
+      out << ',';
+    first = false;
+    auto value = entry_json(*entry, !redact.empty());
+    value["path"] = entry->source.file_path.value_or("");
+    emit(out, std::move(value), redact);
+  }
+  out << "]}\n";
+  if (!out)
+    throw std::runtime_error("unable to write report");
 }
 
 void save_visible_report(const std::filesystem::path& destination,
                          std::span<const core::LogEntry* const> entries,
-                         const core::LogAttributes& filters) {
-  save_report(destination, [&](auto& out) {
-    out << "{\"schema_version\":1,\"scope\":\"visible\",\"filters\":";
-    emit(out, filters);
-    out << ",\"entries\":[";
-    bool first = true;
-    for (const auto* entry : entries) {
-      if (!first)
-        out << ',';
-      first = false;
-      auto value = entry_json(*entry);
-      value["path"] = entry->source.file_path.value_or("");
-      emit(out, value);
-    }
-    out << "]}\n";
-  });
+                         const core::LogAttributes& filters, std::span<const std::string> redact) {
+  save_report(destination, [&](auto& out) { write_visible_report(out, entries, filters, redact); });
 }
 } // namespace loginsight::app

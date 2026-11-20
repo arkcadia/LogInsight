@@ -38,14 +38,21 @@ private:
 
 [[nodiscard]] std::string format_timestamp(core::LogTimestamp timestamp);
 // Streams the whole session (including malformed records); throws on output failure.
-void write_json_report(std::ostream& output, std::span<const AnalysisResult> results);
+void write_json_report(std::ostream& output, std::span<const AnalysisResult> results,
+                       std::span<const std::string> redact = {});
 // Does not overwrite an existing destination. Stages a temporary sibling, then publishes with an
 // exclusive hard link.
 void save_json_report(const std::filesystem::path& destination,
-                      std::span<const AnalysisResult> results);
+                      std::span<const AnalysisResult> results,
+                      std::span<const std::string> redact = {});
+
+void write_visible_report(std::ostream& output, std::span<const core::LogEntry* const> entries,
+                          const core::LogAttributes& filters,
+                          std::span<const std::string> redact = {});
 
 void save_visible_report(const std::filesystem::path& destination,
                          std::span<const core::LogEntry* const> entries,
-                         const core::LogAttributes& filters);
+                         const core::LogAttributes& filters,
+                         std::span<const std::string> redact = {});
 
 } // namespace loginsight::app

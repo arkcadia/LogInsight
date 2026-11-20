@@ -27,7 +27,8 @@ public:
   MainWindow();
   void importFiles(const QStringList& paths);
   void loadSamples();
-  void exportTo(const QString& path, bool visibleOnly = false);
+  void exportTo(const QString& path, bool visibleOnly = false,
+                std::vector<std::string> redactions = {});
   bool busy() const { return busy_; }
   const LogModel* logModel() const { return model_; }
 
@@ -50,7 +51,8 @@ private:
   void toggleBookmark();
   void showBurst(int index);
   void setBusy(bool busy, const QString& text);
-  void exportReport(bool visibleOnly = false);
+  void exportReport(bool visibleOnly, bool redact);
+  std::vector<const core::LogEntry*> visibleEntries() const;
   void configureJson();
   void configureCsv();
   void configureRule();

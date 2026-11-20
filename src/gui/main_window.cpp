@@ -22,6 +22,7 @@
 #include <QMenu>
 #include <QMessageBox>
 #include <QMimeData>
+#include <QPlainTextEdit>
 #include <QProgressBar>
 #include <QPromise>
 #include <QPushButton>
@@ -40,6 +41,8 @@
 #include <QtConcurrent/QtConcurrentRun>
 #include <algorithm>
 #include <exception>
+#include <ostream>
+#include <streambuf>
 
 namespace loginsight::gui {
 namespace {
@@ -278,7 +281,7 @@ MainWindow::MainWindow() {
   exportVisible_->setEnabled(false);
   actions->addWidget(exportVisible_);
   logs->addLayout(actions);
-  connect(exportVisible_, &QPushButton::clicked, this, [this] { exportReport(true); });
+
   auto* filters = new QHBoxLayout;
   search_ = new QLineEdit;
   search_->setPlaceholderText("Search message text…");
@@ -516,7 +519,15 @@ MainWindow::MainWindow() {
         "Log files (*.log *.txt *.jsonl *.ndjson *.csv);;All files (*)");
     importFiles(paths);
   });
-  connect(export_, &QPushButton::clicked, this, [this] { exportReport(); });
+  for (auto* button : {export_, exportVisible_}) {
+    const bool visible = button == exportVisible_;
+    auto* menu = new QMenu{button};
+    menu->addAction("Save JSON…", this, [this, visible] { exportReport(visible, false); });
+    auto* redact = menu->addAction("Redact and preview…", this,
+                                   [this, visible] { exportReport(visible, true); });
+    redact->setObjectName("redactedExport");
+    button->setMenu(menu);
+  }
   auto* debounce = new QTimer{this};
   debounce->setSingleShot(true);
   debounce->setInterval(180);
@@ -1170,38 +1181,134 @@ void MainWindow::showDetails(const QModelIndex& index) {
       "   " + entry->source.name + "\nFile: " + entry->source.file_path.value_or("") + ids +
       "\n\n" + entry->message + "\n\nRAW RECORD\n" + entry->rawContent));
 }
-void MainWindow::exportReport(bool visibleOnly) {
+namespace {
+class PreviewBuffer final : public std::streambuf {
+public:
+  PreviewBuffer() { setp(buffer_.data(), buffer_.data() + buffer_.size()); }
+  std::string_view text() const {
+    return {buffer_.data(), static_cast<std::size_t>(pptr() - pbase())};
+  }
+  bool truncated{};
+
+protected:
+  int_type overflow(int_type) override {
+    truncated = true;
+    return traits_type::eof();
+  }
+
+private:
+  std::array<char, 16 * 1024> buffer_{};
+};
+} // namespace
+
+std::vector<const core::LogEntry*> MainWindow::visibleEntries() const {
+  std::vector<const core::LogEntry*> entries;
+  entries.reserve(static_cast<std::size_t>(proxy_->rowCount()));
+  for (int row = 0; row < proxy_->rowCount(); ++row)
+    entries.push_back(model_->entry(proxy_->mapToSource(proxy_->index(row, 0)).row()));
+  return entries;
+}
+
+void MainWindow::exportReport(bool visibleOnly, bool redact) {
   if (busy_ || !dataset_)
     return;
+  std::vector<std::string> terms;
+  if (redact) {
+    QDialog dialog{this};
+    dialog.setWindowTitle("Redact and preview JSON");
+    dialog.resize(660, 520);
+    QVBoxLayout layout{&dialog};
+    QLabel instructions{"Enter exact values to mask, one per line. Raw record text is removed "
+                        "from redacted reports. Review before sharing."};
+    instructions.setWordWrap(true);
+    layout.addWidget(&instructions);
+    QPlainTextEdit input;
+    input.setObjectName("redactionTerms");
+    input.setAccessibleName("Values to redact");
+    input.setPlaceholderText("One case-sensitive value per line");
+    input.setMaximumHeight(110);
+    layout.addWidget(&input);
+    QPushButton preview{"Preview redacted report"};
+    preview.setObjectName("previewRedaction");
+    layout.addWidget(&preview);
+    QPlainTextEdit output;
+    output.setObjectName("redactionPreview");
+    output.setAccessibleName("Redacted report preview");
+    output.setReadOnly(true);
+    layout.addWidget(&output, 1);
+    QDialogButtonBox buttons{QDialogButtonBox::Save | QDialogButtonBox::Cancel};
+    auto* save = buttons.button(QDialogButtonBox::Save);
+    save->setEnabled(false);
+    layout.addWidget(&buttons);
+    if (visibleOnly) {
+      proxy_->setSearch(search_->text());
+      refreshFilterChips();
+    }
+    const auto entries = visibleOnly ? visibleEntries() : std::vector<const core::LogEntry*>{};
+    const auto filters = proxy_->activeFilters();
+    connect(&input, &QPlainTextEdit::textChanged, &dialog, [&] {
+      save->setEnabled(false);
+      output.clear();
+    });
+    connect(&preview, &QPushButton::clicked, &dialog, [&] {
+      terms.clear();
+      for (const auto& value : input.toPlainText().split('\n', Qt::SkipEmptyParts))
+        terms.push_back(value.toStdString());
+      if (terms.empty() || terms.size() > 32) {
+        output.setPlainText("Enter between 1 and 32 values.");
+        save->setEnabled(false);
+        return;
+      }
+      PreviewBuffer buffer;
+      std::ostream stream{&buffer};
+      stream.exceptions(std::ios::badbit | std::ios::failbit);
+      try {
+        if (visibleOnly)
+          app::write_visible_report(stream, entries, filters, terms);
+        else
+          app::write_json_report(stream, dataset_->files, terms);
+      } catch (const std::exception&) {
+        if (!buffer.truncated) {
+          output.setPlainText("Could not generate the preview.");
+          save->setEnabled(false);
+          return;
+        }
+      }
+      output.setPlainText(
+          QString::fromUtf8(buffer.text().data(), static_cast<qsizetype>(buffer.text().size())) +
+          (buffer.truncated ? "\n[Preview limited to the first 16 KiB.]" : ""));
+      save->setEnabled(true);
+    });
+    connect(&buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(&buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    if (dialog.exec() != QDialog::Accepted)
+      return;
+  }
   const auto path = QFileDialog::getSaveFileName(
       this, visibleOnly ? "Export filtered results" : "Export full session", {},
       "JSON report (*.json)", nullptr, QFileDialog::DontConfirmOverwrite);
-  if (path.isEmpty())
-    return;
-  exportTo(path, visibleOnly);
+  if (!path.isEmpty())
+    exportTo(path, visibleOnly, std::move(terms));
 }
-void MainWindow::exportTo(const QString& path, bool visibleOnly) {
+
+void MainWindow::exportTo(const QString& path, bool visibleOnly,
+                          std::vector<std::string> redactions) {
   if (busy_ || !dataset_ || path.isEmpty())
     return;
   const auto snapshot = dataset_;
-  std::vector<const core::LogEntry*> entries;
-  core::LogAttributes filters;
-  if (visibleOnly) {
-    entries.reserve(static_cast<std::size_t>(proxy_->rowCount()));
-    for (int row = 0; row < proxy_->rowCount(); ++row)
-      entries.push_back(model_->entry(proxy_->mapToSource(proxy_->index(row, 0)).row()));
-    filters = proxy_->activeFilters();
-  }
+  auto entries = visibleOnly ? visibleEntries() : std::vector<const core::LogEntry*>{};
+  auto filters = visibleOnly ? proxy_->activeFilters() : core::LogAttributes{};
   progress_->setRange(0, 0);
   setBusy(true, visibleOnly ? "Exporting visible records…" : "Exporting session…");
-  exporter_.setFuture(QtConcurrent::run(
-      [snapshot, path, visibleOnly, entries = std::move(entries), filters = std::move(filters)] {
+  exporter_.setFuture(
+      QtConcurrent::run([snapshot, path, visibleOnly, entries = std::move(entries),
+                         filters = std::move(filters), terms = std::move(redactions)] {
         try {
           const std::filesystem::path destination{path.toStdString()};
           if (visibleOnly)
-            app::save_visible_report(destination, entries, filters);
+            app::save_visible_report(destination, entries, filters, terms);
           else
-            app::save_json_report(destination, snapshot->files);
+            app::save_json_report(destination, snapshot->files, terms);
           return QString{"Report saved: "} + path;
         } catch (const std::exception& error) {
           return QString{"Export failed: "} + QString::fromUtf8(error.what());

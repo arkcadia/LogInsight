@@ -500,6 +500,29 @@ private slots:
     QVERIFY(status->text().contains("32 MiB"));
     QCOMPARE(window.logModel()->rowCount(), 13);
   }
+  void previewsRedactedJsonBeforeSaving() {
+    MainWindow window;
+    window.show();
+    window.importFiles({LOGINSIGHT_SAMPLE_PATH});
+    QTRY_VERIFY_WITH_TIMEOUT(!window.busy(), 10000);
+    QTimer::singleShot(0, &window, [&] {
+      auto* dialog = window.findChild<QDialog*>();
+      auto* terms = dialog->findChild<QPlainTextEdit*>("redactionTerms");
+      auto* output = dialog->findChild<QPlainTextEdit*>("redactionPreview");
+      auto* save = dialog->findChild<QDialogButtonBox*>()->button(QDialogButtonBox::Save);
+      QVERIFY(!save->isEnabled());
+      terms->setPlainText("gateway");
+      dialog->findChild<QPushButton*>("previewRedaction")->click();
+      QVERIFY(save->isEnabled());
+      QVERIFY(output->toPlainText().contains("[REDACTED]"));
+      QVERIFY(!output->toPlainText().contains("gateway"));
+      terms->setPlainText("worker");
+      QVERIFY(!save->isEnabled());
+      dialog->reject();
+    });
+    window.findChild<QAction*>("redactedExport")->trigger();
+  }
+
   void sampleActionExportAndBusyClose() {
     MainWindow window;
     window.show();

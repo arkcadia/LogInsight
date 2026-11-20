@@ -111,3 +111,35 @@ TEST(ImportBudgetTest, RejectsRecordsAndBatchesThatExceedLimits) {
   std::istringstream excessLine{"\n"};
   EXPECT_THROW(budget.readLine(excessLine, line), std::runtime_error);
 }
+
+TEST(AnalysisServiceTest, RedactsValuesAndOmitsRawTextFromBothReportScopes) {
+  using nlohmann::json;
+  std::array files{AnalysisService{}.analyze(fixture("plain_text_mixed.log"))};
+  auto& file = files.front();
+  file.path = "private-id.log";
+  file.diagnostic = "details for private-id";
+  auto& entry = file.parsed.entries.front();
+  entry.message = "contact private-id twice private-id";
+  entry.source.name = "private-id";
+  entry.source.file_path = "/tmp/private-id.log";
+  entry.attributes["trace_id"] = "private-id";
+  entry.rawContent = R"(private-\u0069d)";
+  file.parsed.errors.front().rawContent = "unlisted secret";
+  const std::vector<std::string> terms{"private", "private-id"};
+  std::ostringstream full;
+  write_json_report(full, files, terms);
+  const auto scrubbed = json::parse(full.str())["files"][0];
+  EXPECT_EQ(scrubbed["path"], "[REDACTED].log");
+  EXPECT_EQ(scrubbed["diagnostic"], "details for [REDACTED]");
+  EXPECT_EQ(scrubbed["entries"][0]["raw"], "");
+  EXPECT_EQ(scrubbed["malformed_records"][0]["raw"], "");
+
+  const std::array<const loginsight::core::LogEntry*, 1> selected{&entry};
+  std::ostringstream visible;
+  write_visible_report(visible, selected, {{"trace_id", "private-id"}}, terms);
+  const auto report = json::parse(visible.str());
+  EXPECT_EQ(report["filters"]["trace_id"], "[REDACTED]");
+  EXPECT_EQ(report["entries"][0]["path"], "/tmp/[REDACTED].log");
+  EXPECT_EQ(report["entries"][0]["message"], "contact [REDACTED] twice [REDACTED]");
+  EXPECT_EQ(entry.message, "contact private-id twice private-id");
+}

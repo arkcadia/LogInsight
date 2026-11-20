@@ -99,6 +99,9 @@ not been verified.
    regardless of table filters, along with failed-file diagnostics and malformed records. Use
    **Export filtered results (N)** in Log Explorer to save only matching rows in their current sort order,
    with the active filters and the source path for each record.
+   Choose **Redact and preview** from either export menu to mask exact values in the JSON.
+   Enter one case-sensitive value per line. Redacted exports omit raw record text, including
+   rejected lines. Review the output before sharing. The preview displays up to the first 16 KiB.
 
 Each import replaces the current session; selecting multiple files creates one session.
 A batch in which every file fails keeps the prior session. Empty or entirely malformed

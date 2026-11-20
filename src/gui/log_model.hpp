@@ -13,6 +13,19 @@
 #include <vector>
 
 namespace loginsight::gui {
+struct NamedRule {
+  QString name{"Error burst"};
+  rules::BurstRule rule;
+};
+
+struct NamedBurst {
+  QString ruleName;
+  rules::ErrorBurst entries;
+};
+
+std::vector<NamedBurst> evaluate_rules(std::span<const core::LogEntry* const> entries,
+                                       const std::vector<NamedRule>& rules);
+
 struct Dataset {
   Dataset() = default;
   Dataset(const Dataset&) = delete;
@@ -25,13 +38,13 @@ struct Dataset {
   std::size_t importedFiles{};
   std::size_t malformed{};
   QString diagnostics;
-  std::vector<rules::ErrorBurst> bursts;
+  std::vector<NamedBurst> bursts;
 };
 // Construct completely in the worker, then share immutable results with UI/export.
 std::shared_ptr<const Dataset> load_files(const QStringList& paths, std::stop_token stop = {},
                                           const std::function<void(int)>& progress = {},
                                           parsers::JsonParserConfig config = {},
-                                          const rules::BurstRule& rule = {},
+                                          const std::vector<NamedRule>& rules = {NamedRule{}},
                                           parsers::CsvColumns csv = {});
 QColor level_color(core::LogLevel level);
 

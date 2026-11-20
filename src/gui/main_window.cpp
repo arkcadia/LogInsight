@@ -219,10 +219,10 @@ MainWindow::MainWindow() {
   alertHeader->addWidget(label("Burst alerts", "font-size: 16px; font-weight: 600;"));
   alertHeader->addStretch();
   dashboard->addLayout(alertHeader);
-  ruleSettings_ = new QPushButton{"Alert rule"};
+  ruleSettings_ = new QPushButton{"Alert rules"};
   ruleSettings_->setObjectName("alertRule");
   alertHeader->addWidget(ruleSettings_);
-  ruleDescription_ = label("5 events at Error or higher in 60 seconds per source.");
+  ruleDescription_ = label("Active rules: 1");
   ruleDescription_->setTextFormat(Qt::PlainText);
   ruleDescription_->setWordWrap(true);
   dashboard->addWidget(ruleDescription_);
@@ -607,7 +607,7 @@ void MainWindow::importFiles(const QStringList& paths) {
   cancelImport_->show();
   importer_.setFuture(QtConcurrent::run([unique, stop = importStop_.get_token(),
                                          config = jsonConfig_, csv = csvColumns_,
-                                         rule = burstRule_](QPromise<ImportOutcome>& promise) {
+                                         rules = activeRules_](QPromise<ImportOutcome>& promise) {
     promise.setProgressRange(0, 100);
     try {
       const auto progress = [&promise, last = -1](int value) mutable {
@@ -616,7 +616,7 @@ void MainWindow::importFiles(const QStringList& paths) {
           promise.setProgressValue(value);
         }
       };
-      promise.addResult(ImportOutcome{load_files(unique, stop, progress, config, rule, csv), {}});
+      promise.addResult(ImportOutcome{load_files(unique, stop, progress, config, rules, csv), {}});
     } catch (const std::exception& error) {
       promise.addResult(ImportOutcome{nullptr, QString::fromUtf8(error.what())});
     }
@@ -748,57 +748,115 @@ void MainWindow::configureCsv() {
 
 void MainWindow::configureRule() {
   QDialog dialog{this};
-  dialog.setWindowTitle("Burst alert rule");
+  dialog.setWindowTitle("Burst alert rules");
   QFormLayout layout{&dialog};
+  auto draft = activeRules_;
+  QComboBox chooser;
+  chooser.setObjectName("burstRuleChooser");
+  auto* actions = new QHBoxLayout;
+  QPushButton add{"Add rule"};
+  add.setObjectName("addBurstRule");
+  QPushButton remove{"Remove rule"};
+  actions->addWidget(&add);
+  actions->addWidget(&remove);
+  QLineEdit name;
+  name.setObjectName("burstRuleName");
   QSpinBox threshold;
   threshold.setObjectName("burstThreshold");
   threshold.setRange(2, static_cast<int>(parsers::ImportBudget::maxLines));
-  threshold.setValue(static_cast<int>(burstRule_.threshold));
   QSpinBox seconds;
   seconds.setObjectName("burstWindow");
   seconds.setRange(1, 86400);
-  seconds.setValue(static_cast<int>(burstRule_.window.count()));
   QComboBox severity;
   severity.setObjectName("burstSeverity");
   severity.addItems({"Trace", "Debug", "Info", "Warning", "Error", "Critical"});
-  severity.setCurrentIndex(static_cast<int>(burstRule_.minimumLevel));
-  QLineEdit source{QString::fromStdString(burstRule_.source)};
+  QLineEdit source;
   source.setObjectName("burstSource");
   source.setPlaceholderText("All sources if blank");
+  layout.addRow("&Rule", &chooser);
+  layout.addRow(actions);
+  layout.addRow("&Name", &name);
   layout.addRow("&Event count", &threshold);
   layout.addRow("&Window (seconds)", &seconds);
   layout.addRow("&Minimum severity", &severity);
   layout.addRow("&Source (exact match)", &source);
+  QLabel error;
+  error.setWordWrap(true);
+  error.hide();
+  layout.addRow(&error);
+  int selected = 0;
+  const auto save = [&] {
+    draft[static_cast<std::size_t>(selected)] = {
+        name.text().trimmed(),
+        {.threshold = static_cast<std::size_t>(threshold.value()),
+         .window = std::chrono::seconds{seconds.value()},
+         .minimumLevel = static_cast<core::LogLevel>(severity.currentIndex()),
+         .source = source.text().toStdString()}};
+    chooser.setItemText(selected, name.text().trimmed());
+  };
+  const auto open = [&](int index) {
+    selected = index;
+    const auto& entry = draft[static_cast<std::size_t>(index)];
+    name.setText(entry.name);
+    threshold.setValue(static_cast<int>(entry.rule.threshold));
+    seconds.setValue(static_cast<int>(entry.rule.window.count()));
+    severity.setCurrentIndex(static_cast<int>(entry.rule.minimumLevel));
+    source.setText(QString::fromStdString(entry.rule.source));
+    remove.setEnabled(draft.size() > 1);
+    add.setEnabled(draft.size() < 16);
+  };
+  for (const auto& entry : draft)
+    chooser.addItem(entry.name);
+  open(0);
+  connect(&chooser, &QComboBox::currentIndexChanged, &dialog, [&](int index) {
+    save();
+    open(index);
+  });
+  connect(&add, &QPushButton::clicked, &dialog, [&] {
+    save();
+    const QSignalBlocker blocker{chooser};
+    draft.push_back({QString{"New rule %1"}.arg(draft.size() + 1), {}});
+    chooser.addItem(draft.back().name);
+    chooser.setCurrentIndex(chooser.count() - 1);
+    open(chooser.currentIndex());
+    name.setFocus();
+    name.selectAll();
+  });
+  connect(&remove, &QPushButton::clicked, &dialog, [&] {
+    const QSignalBlocker blocker{chooser};
+    draft.erase(draft.begin() + selected);
+    chooser.removeItem(selected);
+    open(chooser.currentIndex());
+  });
   QDialogButtonBox buttons{QDialogButtonBox::Ok | QDialogButtonBox::Cancel};
   layout.addRow(&buttons);
-  connect(&buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+  connect(&buttons, &QDialogButtonBox::accepted, &dialog, [&] {
+    save();
+    std::set<QString> names;
+    for (const auto& entry : draft) {
+      if (entry.name.isEmpty() || !names.insert(entry.name.toCaseFolded()).second) {
+        error.setText("Give each rule a distinct, non-empty name.");
+        error.show();
+        return;
+      }
+    }
+    dialog.accept();
+  });
   connect(&buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
   if (dialog.exec() != QDialog::Accepted)
     return;
-  burstRule_ = {.threshold = static_cast<std::size_t>(threshold.value()),
-                .window = std::chrono::seconds{seconds.value()},
-                .minimumLevel = static_cast<core::LogLevel>(severity.currentIndex()),
-                .source = source.text().toStdString()};
+  activeRules_ = std::move(draft);
   if (proxy_->activeFilters().contains("alert")) {
     proxy_->setBurst({});
     refreshFilterChips();
   }
   if (dataset_)
-    bursts_ = rules::find_error_bursts(dataset_->entries, burstRule_);
+    bursts_ = evaluate_rules(dataset_->entries, activeRules_);
   refreshBursts();
 }
 
 void MainWindow::refreshBursts() {
-  const auto sources =
-      burstRule_.source.empty()
-          ? QString{"per source"}
-          : QString{"from %1"}.arg(QString::fromStdString(burstRule_.source).left(80));
-  ruleDescription_->setText(
-      QString("%1 events at %2 or higher in %3 seconds %4.")
-          .arg(burstRule_.threshold)
-          .arg(QString::fromStdString(std::string{core::to_string(burstRule_.minimumLevel)}))
-          .arg(burstRule_.window.count())
-          .arg(sources));
+  ruleDescription_->setText(QString{"Active rules: %1"}.arg(activeRules_.size()));
   alerts_->clear();
   alerts_->setVisible(!bursts_.empty());
   openBurst_->setVisible(!bursts_.empty());
@@ -806,10 +864,11 @@ void MainWindow::refreshBursts() {
   noBursts_->setVisible(bursts_.empty());
   for (const auto& burst : bursts_) {
     alerts_->addItem(
-        QString("%1 · %2 → %3")
-            .arg(QString::fromStdString(burst.front()->source.name).left(80),
-                 QString::fromStdString(app::format_timestamp(burst.front()->timestamp)),
-                 QString::fromStdString(app::format_timestamp(burst.back()->timestamp))));
+        QString("%1 · %2 · %3 → %4")
+            .arg(burst.ruleName,
+                 QString::fromStdString(burst.entries.front()->source.name).left(80),
+                 QString::fromStdString(app::format_timestamp(burst.entries.front()->timestamp)),
+                 QString::fromStdString(app::format_timestamp(burst.entries.back()->timestamp))));
   }
 }
 
@@ -948,7 +1007,7 @@ void MainWindow::showBurst(int index) {
   if (index < 0 || static_cast<std::size_t>(index) >= bursts_.size())
     return;
   resetExplorerFilters();
-  proxy_->setBurst(bursts_[static_cast<std::size_t>(index)], alerts_->item(index)->text());
+  proxy_->setBurst(bursts_[static_cast<std::size_t>(index)].entries, alerts_->item(index)->text());
   refreshFilterChips();
   navigation_->setCurrentRow(1);
   table_->setCurrentIndex(proxy_->index(0, 0));

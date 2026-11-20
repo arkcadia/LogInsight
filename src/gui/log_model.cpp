@@ -9,7 +9,8 @@ namespace loginsight::gui {
 std::shared_ptr<const Dataset> load_files(const QStringList& paths, std::stop_token stop,
                                           const std::function<void(int)>& progress,
                                           parsers::JsonParserConfig config,
-                                          const rules::BurstRule& rule, parsers::CsvColumns csv) {
+                                          const std::vector<NamedRule>& activeRules,
+                                          parsers::CsvColumns csv) {
   parsers::ImportBudget budget{.stop = stop, .progress = {}};
   if (paths.size() > 128)
     throw std::runtime_error("session exceeds the 128 file import limit");
@@ -91,11 +92,22 @@ std::shared_ptr<const Dataset> load_files(const QStringList& paths, std::stop_to
     return a.second != b.second ? a.second > b.second : a.first < b.first;
   });
   dataset->topSources.assign(top.begin(), end);
-  dataset->bursts = rules::find_error_bursts(dataset->entries, rule);
+  dataset->bursts = evaluate_rules(dataset->entries, activeRules);
   budget.checkCancelled();
   if (progress)
     progress(100);
   return dataset;
+}
+
+std::vector<NamedBurst> evaluate_rules(std::span<const core::LogEntry* const> entries,
+                                       const std::vector<NamedRule>& activeRules) {
+  std::vector<NamedBurst> result;
+  for (const auto& named : activeRules) {
+    auto matches = rules::find_error_bursts(entries, named.rule);
+    for (auto& match : matches)
+      result.push_back({named.name, std::move(match)});
+  }
+  return result;
 }
 
 QColor level_color(core::LogLevel level) {

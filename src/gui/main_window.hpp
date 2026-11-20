@@ -106,8 +106,8 @@ private:
   QPushButton* openBurst_{};
   parsers::JsonParserConfig jsonConfig_;
   parsers::CsvColumns csvColumns_;
-  rules::BurstRule burstRule_;
-  std::vector<rules::ErrorBurst> bursts_;
+  std::vector<NamedRule> activeRules_{NamedRule{}};
+  std::vector<NamedBurst> bursts_;
   QPushButton* cancelImport_{};
   QPushButton* import_{};
   QPushButton* samples_{};

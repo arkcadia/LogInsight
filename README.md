@@ -26,7 +26,7 @@ and export a JSON report that includes malformed input. Processing stays on your
 - CLI summaries, documented exit codes and JSON export for automation.
 - Qt-free core and application services, with an optional desktop build.
 
-Desktop alerts evaluate a configurable burst rule over the imported session.
+Desktop alerts evaluate a configurable burst rules over the imported session.
 The alerts and storage libraries remain scaffolding.
 
 ## Quick start
@@ -114,8 +114,8 @@ window. These limits apply to the desktop.
 
 In **Overview**, select an alert and choose **Open matching records**. The default rule flags
 five `ERROR` or `CRITICAL` events from the same source within 60 seconds, including events
-spread across multiple files. **Alert rule** lets you change the event count, window, minimum
-severity, and optional exact source. Changes reevaluate the current session. The rule orders
+spread across multiple files. **Alert rules** lets you keep up to 16 named rules with independent event counts, windows,
+minimum severities, and source filters. Changes reevaluate the current session. The rule orders
 records by timestamp and uses each matching record once. Settings last until the app closes.
 
 ### Command line

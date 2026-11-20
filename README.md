@@ -4,7 +4,18 @@ LogInsight is a local log investigation tool with a Qt 6 desktop app and a C++20
 
 ![LogInsight Recap showing a severity donut chart and the most active sources in the sample session](docs/images/recap.png)
 
-## Quick start
+## Install on Ubuntu
+
+Download the `.deb` for Ubuntu 24.04 (amd64) from [GitHub Releases](https://github.com/arkcadia/LogInsight/releases).
+
+```sh
+sudo apt install ./loginsight_0.1.0_amd64.deb
+loginsight-gui --sample
+```
+
+You can also open **LogInsight** from your applications menu. The package includes the `loginsight` CLI.
+
+## Build from source
 
 On Ubuntu 24.04, install a C++20 toolchain, CMake, Qt Widgets and Concurrent, SQLite, nlohmann/json, and GoogleTest:
 
@@ -103,4 +114,6 @@ The desktop workflow tests run offscreen. [CI](.github/workflows/ci.yml) defines
 
 ## Distribution and license
 
-The build tree is runnable. Installers and native Windows or macOS builds have not been validated. The repository does not currently include a license file.
+The [release workflow](.github/workflows/release-deb.yml) builds and tests the Ubuntu 24.04 amd64 package. After a desktop build, run `cpack --config build/CPackConfig.cmake -B build/dist` to build a local package.
+
+The repository does not currently include a license file.

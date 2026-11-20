@@ -11,6 +11,7 @@
 #include <QComboBox>
 #include <QDialog>
 #include <QDialogButtonBox>
+#include <QDir>
 #include <QDragEnterEvent>
 #include <QFileDialog>
 #include <QFileInfo>
@@ -651,7 +652,11 @@ void MainWindow::indexLargeFiles(const QStringList& paths) {
 }
 
 void MainWindow::loadSamples() {
-  importFiles({QApplication::applicationDirPath() + "/samples/atlas.log"});
+  const QDir executableDirectory{QApplication::applicationDirPath()};
+  const auto adjacentSample = executableDirectory.filePath("samples/atlas.log");
+  importFiles({QFileInfo::exists(adjacentSample)
+                   ? adjacentSample
+                   : executableDirectory.filePath(LOGINSIGHT_INSTALLED_SAMPLE)});
 }
 void MainWindow::refresh() {
   resetExplorerFilters();

@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=LogInsight
+Comment=Inspect local log files
+Exec=loginsight-gui
+Icon=utilities-terminal
+Terminal=false
+Categories=Development;

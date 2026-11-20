@@ -1,0 +1,54 @@
+name: Publish Ubuntu package
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            nlohmann-json3-dev libgtest-dev qt6-base-dev libsqlite3-dev dpkg-dev \
+            desktop-file-utils xvfb xauth
+      - name: Build and test
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+            -DLOGINSIGHT_BUILD_GUI=ON -DLOGINSIGHT_FETCH_GTEST=OFF
+          cmake --build build --parallel 4
+          ctest --test-dir build --output-on-failure
+      - name: Package and verify installation
+        run: |
+          cpack --config build/CPackConfig.cmake -B build/dist
+          package="loginsight_${GITHUB_REF_NAME#v}_amd64.deb"
+          test "v$(dpkg-deb -f "build/dist/$package" Version)" = "$GITHUB_REF_NAME"
+          sudo apt-get install --yes "./build/dist/$package"
+          desktop-file-validate /usr/share/applications/loginsight.desktop
+          scratch=$(mktemp -d)
+          dpkg-deb -x "build/dist/$package" "$scratch"
+          cp build/tests/gui/loginsight_gui_tests "$scratch/usr/bin/"
+          cd "$scratch"
+          loginsight analyse /usr/share/loginsight/samples/atlas.log --json report.json
+          xvfb-run -a bash -e -c '
+            ./usr/bin/loginsight_gui_tests sampleActionExportAndBusyClose
+            status=0
+            timeout 3s loginsight-gui --sample || status=$?
+            test "$status" -eq 124
+          '
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          package="loginsight_${GITHUB_REF_NAME#v}_amd64.deb"
+          (cd build/dist && sha256sum "$package" > "$package.sha256")
+          gh release create "$GITHUB_REF_NAME" "build/dist/$package" "build/dist/$package.sha256" \
+            --verify-tag --title "LogInsight $GITHUB_REF_NAME" \
+            --notes-file "packaging/releases/$GITHUB_REF_NAME.md"

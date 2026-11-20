@@ -21,6 +21,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+include(GNUInstallDirs)
 include(cmake/CompilerWarnings.cmake)
 include(cmake/Sanitizers.cmake)
 
@@ -36,6 +37,23 @@ if(LOGINSIGHT_BUILD_GUI)
   find_package(Qt6 6.4 REQUIRED COMPONENTS Widgets Concurrent)
   find_package(SQLite3 REQUIRED)
   add_subdirectory(src/gui)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND LOGINSIGHT_BUILD_GUI)
+  set(CPACK_GENERATOR DEB)
+  set(CPACK_INSTALL_DEFAULT_DIRECTORY_PERMISSIONS
+    OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
+  set(CPACK_PACKAGING_INSTALL_PREFIX "/usr")
+  set(CPACK_PACKAGE_NAME "loginsight")
+  set(CPACK_PACKAGE_CONTACT "LogInsight Maintainers <arkcadia@users.noreply.github.com>")
+  set(CPACK_PACKAGE_HOMEPAGE_URL "https://github.com/arkcadia/LogInsight")
+  set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Local log investigation for the desktop and command line")
+  set(CPACK_DEBIAN_PACKAGE_SECTION "utils")
+  set(CPACK_DEBIAN_FILE_NAME "DEB-DEFAULT")
+  set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
+  set(CPACK_DEBIAN_PACKAGE_DEPENDS "qt6-qpa-plugins")
+  set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "qt6-wayland")
+  include(CPack)
 endif()
 
 if(LOGINSIGHT_BUILD_TESTS)

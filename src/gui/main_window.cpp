@@ -1,5 +1,6 @@
 #include "main_window.hpp"
 #include "loginsight/parsers/timestamp_parser.hpp"
+#include "malformed_panel.hpp"
 #include "recap_panel.hpp"
 #include <QAction>
 #include <QApplication>
@@ -140,7 +141,7 @@ MainWindow::MainWindow() {
   auto* side = new QVBoxLayout(sidebar);
   side->setContentsMargins(0, 0, 0, 12);
   auto* navigation = navigation_ = new QListWidget;
-  navigation->addItems({"Overview", "Log Explorer", "Recap"});
+  navigation->addItems({"Overview", "Log Explorer", "Recap", "Malformed"});
   navigation->setCurrentRow(0);
   navigation->setObjectName("navigation");
   side->addWidget(navigation);
@@ -172,10 +173,10 @@ MainWindow::MainWindow() {
     metrics_[static_cast<std::size_t>(i)] = metric;
     cards->addWidget(metric, 0, i);
     cards->setColumnStretch(i, 1);
-    connect(metric, &QPushButton::clicked, this, [this, scroll, i] {
+    connect(metric, &QPushButton::clicked, this, [this, i] {
       if (i == 3) {
-        scroll->ensureWidgetVisible(diagnostics_);
-        diagnostics_->setFocus();
+        navigation_->setCurrentRow(3);
+        malformed_->focusRecords();
         return;
       }
       resetExplorerFilters();
@@ -479,6 +480,8 @@ MainWindow::MainWindow() {
                             table_->setFocus();
                           }};
   pages_->addWidget(recap_);
+  malformed_ = new MalformedPanel;
+  pages_->addWidget(malformed_);
   status_ = label("Ready");
   status_->setObjectName("statusText");
   status_->setTextFormat(Qt::PlainText);
@@ -628,6 +631,7 @@ void MainWindow::refresh() {
   model_->setDataset(dataset_);
   refreshTimeline();
   recap_->setDataset(*dataset_);
+  malformed_->setDataset(dataset_);
   bursts_ = dataset_->bursts;
   refreshBursts();
   {

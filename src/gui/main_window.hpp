@@ -21,6 +21,7 @@ class QResizeEvent;
 
 namespace loginsight::gui {
 class RecapPanel;
+class MalformedPanel;
 class MainWindow final : public QMainWindow {
 public:
   MainWindow();
@@ -67,6 +68,7 @@ private:
   LogFilter* proxy_{};
   QStackedWidget* pages_{};
   RecapPanel* recap_{};
+  MalformedPanel* malformed_{};
   QTableView* table_{};
   QSplitter* splitter_{};
   QTextEdit* details_{};

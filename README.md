@@ -81,8 +81,9 @@ not been verified.
 2. Review counts, alerts and import diagnostics in **Overview**. Open **Recap** for the
    severity donut chart and the five sources with the most entries in the current session.
    Select a severity slice, legend button, or source bar to open matching logs.
-3. Open **Log Explorer** or click a count on the overview. The **Malformed** count jumps to
-   diagnostics. Search message text, select a severity or source, or click a column header to sort.
+3. Open **Log Explorer** or click a count on the overview. The **Malformed** count opens
+   a separate record explorer. Filter rejected lines by file or reason and use **Copy original**
+   to copy the selected line. Search message text, select a severity or source, or click a column header to sort.
    Click a timeline bucket or open **Time range**, enter one or both UTC bounds, and select **Apply**.
    Both bounds are inclusive, and the time range combines with the other filters. Use
    the filter chips to remove individual filters, or **Clear all** to reset them. Select a row

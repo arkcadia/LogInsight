@@ -1,6 +1,7 @@
 #include "main_window.hpp"
 #include <QAbstractItemModelTester>
 #include <QAction>
+#include <QClipboard>
 #include <QComboBox>
 #include <QDialog>
 #include <QDialogButtonBox>
@@ -13,6 +14,7 @@
 #include <QLineEdit>
 #include <QListWidget>
 #include <QMenu>
+#include <QPlainTextEdit>
 #include <QPushButton>
 #include <QSettings>
 #include <QSignalSpy>
@@ -113,8 +115,9 @@ private slots:
     QCOMPARE(splitter->orientation(), Qt::Horizontal);
 
     window.findChild<QPushButton*>("malformedMetric")->click();
-    QCOMPARE(navigation->currentRow(), 0);
-    QTRY_VERIFY(window.findChild<QTextEdit*>("diagnostics")->hasFocus());
+    QCOMPARE(navigation->currentRow(), 3);
+    QTRY_VERIFY(window.findChild<QTableView*>("malformedTable")->hasFocus());
+    navigation->setCurrentRow(0);
     window.findChild<QPushButton*>("errorsMetric")->click();
     QCOMPARE(navigation->currentRow(), 1);
     QCOMPARE(table->model()->rowCount(), 3);
@@ -203,6 +206,39 @@ private slots:
     QCOMPARE(table->model()->rowCount(), 0);
     window.findChild<QPushButton*>("bookmarkChip")->click();
     QCOMPARE(table->model()->rowCount(), 3);
+  }
+
+  void browsesAndCopiesMalformedRecords() {
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const auto other = directory.filePath("other.log");
+    std::ofstream{other.toStdString()} << "bad raw sample\n";
+    MainWindow window;
+    window.show();
+    window.importFiles({LOGINSIGHT_SAMPLE_PATH, other});
+    QTRY_VERIFY_WITH_TIMEOUT(!window.busy(), 10000);
+    window.findChild<QPushButton*>("malformedMetric")->click();
+    auto* table = window.findChild<QTableView*>("malformedTable");
+    QCOMPARE(table->model()->rowCount(), 4);
+    auto* files = window.findChild<QComboBox*>("malformedFile");
+    files->setCurrentIndex(files->findData(QString{LOGINSIGHT_SAMPLE_PATH}));
+    QCOMPARE(table->model()->rowCount(), 3);
+    auto* reason = window.findChild<QLineEdit*>("malformedReason");
+    reason->setText("missing message");
+    QTRY_COMPARE(table->model()->rowCount(), 1);
+    QCOMPARE(table->model()->index(0, 1).data().toInt(), 16);
+    auto* raw = window.findChild<QPlainTextEdit*>("malformedRaw");
+    QVERIFY(!raw->toPlainText().isEmpty());
+    auto* copy = window.findChild<QPushButton*>("copyMalformed");
+    copy->click();
+    QCOMPARE(QApplication::clipboard()->text(), raw->toPlainText());
+
+    files->setCurrentIndex(files->findData(other));
+    QCOMPARE(table->model()->rowCount(), 0);
+    QVERIFY(!copy->isEnabled());
+    reason->clear();
+    QTRY_COMPARE(table->model()->rowCount(), 1);
+    QCOMPARE(raw->toPlainText(), QString{"bad raw sample"});
   }
 
   void importsCsvWithDesktopColumnMapping() {

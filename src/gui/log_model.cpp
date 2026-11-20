@@ -92,6 +92,7 @@ std::shared_ptr<const Dataset> load_files(const QStringList& paths, std::stop_to
     return a.second != b.second ? a.second > b.second : a.first < b.first;
   });
   dataset->topSources.assign(top.begin(), end);
+  dataset->sourceCounts = std::move(sources);
   dataset->bursts = evaluate_rules(dataset->entries, activeRules);
   budget.checkCancelled();
   if (progress)

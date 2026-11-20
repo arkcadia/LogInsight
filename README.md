@@ -113,6 +113,12 @@ imports are limited to 128 files, 32 MiB of input per batch, 200,000 physical li
 Exceeding a limit keeps the previous session. Imports and exports must finish before closing the
 window. These limits apply to the desktop.
 
+### Compare sessions
+
+Open **Compare** and choose **Use current session as baseline**. Import another batch to
+see baseline, current, and difference counts for each severity and source. Only summary
+counts are kept for the baseline, and the baseline lasts until the app closes.
+
 ### Burst alerts
 
 In **Overview**, select an alert and choose **Open matching records**. The default rule flags

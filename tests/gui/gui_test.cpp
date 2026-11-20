@@ -208,6 +208,33 @@ private slots:
     QCOMPARE(table->model()->rowCount(), 3);
   }
 
+  void comparesImportedSessionsBySeverityAndSource() {
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const auto path = directory.filePath("after.log");
+    std::ofstream{path.toStdString()} << "2026-10-20 09:00:00 ERROR worker Still failing\n"
+                                         "2026-10-20 09:00:01 INFO new-service Started\n";
+    MainWindow window;
+    window.show();
+    window.findChild<QListWidget*>("navigation")->setCurrentRow(4);
+    auto* pin = window.findChild<QPushButton*>("pinBaseline");
+    QVERIFY(!pin->isEnabled());
+    window.importFiles({LOGINSIGHT_SAMPLE_PATH});
+    QTRY_VERIFY_WITH_TIMEOUT(!window.busy(), 10000);
+    pin->click();
+    window.importFiles({path});
+    QTRY_VERIFY_WITH_TIMEOUT(!window.busy(), 10000);
+    const auto* severity = window.findChild<QTableView*>("severityComparison")->model();
+    QCOMPARE(severity->index(4, 1).data().toString(), QString{"2"});
+    QCOMPARE(severity->index(4, 3).data().toString(), QString{"-1"});
+    const auto* sources = window.findChild<QTableView*>("sourceComparison")->model();
+    QCOMPARE(sources->rowCount(), 4);
+    QCOMPARE(sources->index(0, 0).data().toString(), QString{"catalog"});
+    QCOMPARE(sources->index(0, 3).data().toString(), QString{"-3"});
+    QCOMPARE(sources->index(2, 0).data().toString(), QString{"new-service"});
+    QCOMPARE(sources->index(2, 3).data().toString(), QString{"+1"});
+  }
+
   void browsesAndCopiesMalformedRecords() {
     QTemporaryDir directory;
     QVERIFY(directory.isValid());

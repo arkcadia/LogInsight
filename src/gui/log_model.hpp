@@ -7,6 +7,7 @@
 #include <QSortFilterProxyModel>
 #include <QStringList>
 #include <array>
+#include <map>
 #include <memory>
 #include <optional>
 #include <set>
@@ -33,6 +34,7 @@ struct Dataset {
   std::vector<app::AnalysisResult> files;
   std::vector<const core::LogEntry*> entries;
   QStringList sources;
+  std::map<QString, std::size_t> sourceCounts;
   std::vector<std::pair<QString, std::size_t>> topSources;
   std::array<std::size_t, 7> counts{};
   std::size_t importedFiles{};

@@ -206,6 +206,22 @@ private slots:
       QVERIFY(window.grab().save(capture + "/recap.png"));
     }
 
+    auto* donut = window.findChild<QWidget*>("severityDonut");
+    QVERIFY(donut->isVisible());
+    const int radius = std::min({donut->width() - 28, donut->height() - 28, 180}) / 2;
+    QTest::mouseClick(donut, Qt::LeftButton, Qt::NoModifier,
+                      QPoint{donut->width() / 2 + radius, donut->height() / 2});
+    QCOMPARE(navigation->currentRow(), 1);
+    auto* table = window.findChild<QTableView*>("logTable");
+    QCOMPARE(table->model()->rowCount(), 6);
+    navigation->setCurrentRow(2);
+    auto* source = window.findChild<QPushButton*>("recapSource0");
+    QTest::mouseClick(source, Qt::LeftButton);
+    QCOMPARE(navigation->currentRow(), 1);
+    QCOMPARE(table->model()->rowCount(), 5);
+    QCOMPARE(table->model()->index(0, 2).data().toString(), QString{"gateway"});
+    navigation->setCurrentRow(2);
+
     QTemporaryDir directory;
     QVERIFY(directory.isValid());
     const auto empty = directory.filePath("empty.log");

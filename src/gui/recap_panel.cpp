@@ -3,10 +3,14 @@
 
 #include <QFontMetrics>
 #include <QLabel>
+#include <QMouseEvent>
 #include <QPainter>
 #include <QProgressBar>
+#include <QPushButton>
 #include <QVBoxLayout>
 #include <algorithm>
+#include <cmath>
+#include <numbers>
 #include <numeric>
 
 namespace loginsight::gui {
@@ -20,7 +24,8 @@ QLabel* heading(const QString& title, int size) {
 
 class SeverityDonut final : public QWidget {
 public:
-  SeverityDonut() {
+  explicit SeverityDonut(std::function<void(int)> open) : open_(std::move(open)) {
+    setObjectName("severityDonut");
     setMinimumSize(144, 144);
     setStyleSheet("background: transparent;");
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
@@ -39,9 +44,7 @@ protected:
       return;
     QPainter painter{this};
     painter.setRenderHint(QPainter::Antialiasing);
-    const qreal diameter = std::min({width() - 28, height() - 28, 180});
-    const QRectF ring{(width() - diameter) / 2, (height() - diameter) / 2, diameter, diameter};
-    constexpr int fullCircle = 360 * 16;
+    const auto ring = bounds();
     std::size_t cumulative{};
     int end{};
     for (std::size_t i = 0; i < counts_.size(); ++i) {
@@ -64,12 +67,40 @@ protected:
     painter.drawText(ring.adjusted(0, 30, 0, 0), Qt::AlignCenter, "valid entries");
   }
 
+  void mouseReleaseEvent(QMouseEvent* event) override {
+    if (event->button() != Qt::LeftButton || total_ == 0)
+      return;
+    const auto ring = bounds();
+    const auto delta = event->position() - ring.center();
+    if (std::abs(std::hypot(delta.x(), delta.y()) - ring.width() / 2) > 11)
+      return;
+    auto angle = std::atan2(delta.x(), -delta.y()) / (2 * std::numbers::pi);
+    if (angle < 0)
+      angle += 1;
+    const int segment = static_cast<int>(angle * fullCircle);
+    std::size_t cumulative{};
+    for (std::size_t i = 0; i < counts_.size(); ++i) {
+      cumulative += counts_[i];
+      if (segment < static_cast<int>(cumulative * fullCircle / total_)) {
+        open_(static_cast<int>(i));
+        return;
+      }
+    }
+  }
+
 private:
+  static constexpr int fullCircle = 360 * 16;
+  QRectF bounds() const {
+    const qreal diameter = std::min({width() - 28, height() - 28, 180});
+    return {(width() - diameter) / 2, (height() - diameter) / 2, diameter, diameter};
+  }
+  std::function<void(int)> open_;
   std::array<std::size_t, 7> counts_{};
   std::size_t total_{};
 };
 
-RecapPanel::RecapPanel(QWidget* parent) : QWidget{parent} {
+RecapPanel::RecapPanel(std::function<void(int)> openSeverity,
+                       std::function<void(const QString&)> openSource) {
   auto* content = new QVBoxLayout(this);
   content->setContentsMargins(18, 14, 18, 14);
   content->setSpacing(12);
@@ -88,14 +119,17 @@ RecapPanel::RecapPanel(QWidget* parent) : QWidget{parent} {
   auto* severityLayout = new QVBoxLayout(severity);
   severityLayout->addWidget(heading("Severity breakdown", 16));
   auto* breakdown = new QHBoxLayout;
-  donut_ = new SeverityDonut;
+  donut_ = new SeverityDonut{openSeverity};
   breakdown->addWidget(donut_, 1);
   auto* legend = new QVBoxLayout;
   const QStringList levels{"Trace", "Debug", "Info", "Warning", "Error", "Critical", "Unknown"};
   for (std::size_t i = 0; i < severityTotals_.size(); ++i) {
     auto* row = new QHBoxLayout;
-    auto* name = new QLabel{levels[static_cast<qsizetype>(i)]};
-    name->setStyleSheet("color: " + level_color(static_cast<core::LogLevel>(i)).name() + ';');
+    auto* name = severityButtons_[i] = new QPushButton{levels[static_cast<qsizetype>(i)]};
+    name->setStyleSheet("padding: 2px 5px; text-align: left; color: " +
+                        level_color(static_cast<core::LogLevel>(i)).name() + ';');
+    connect(name, &QPushButton::clicked, this,
+            [openSeverity, i] { openSeverity(static_cast<int>(i)); });
     row->addWidget(name);
     row->addStretch();
     severityTotals_[i] = new QLabel;
@@ -113,11 +147,13 @@ RecapPanel::RecapPanel(QWidget* parent) : QWidget{parent} {
   sourcesLayout->addWidget(heading("Top sources", 16));
   sourcesLayout->addWidget(new QLabel{"Up to five sources by entry count"});
   for (std::size_t i = 0; i < sourceRows_.size(); ++i) {
-    auto* group = sourceRows_[i] = new QWidget;
-    group->setObjectName("recapSourceRow");
-    group->setStyleSheet("QWidget#recapSourceRow { background: transparent; }");
+    auto* group = sourceRows_[i] = new QPushButton;
+    group->setObjectName(QString("recapSource%1").arg(i));
+    group->setStyleSheet("padding: 4px;");
+    connect(group, &QPushButton::clicked, this,
+            [openSource, group] { openSource(group->property("sourceName").toString()); });
     auto* groupLayout = new QVBoxLayout(group);
-    groupLayout->setContentsMargins(0, 0, 0, 4);
+    groupLayout->setContentsMargins(6, 5, 6, 5);
     groupLayout->setSpacing(4);
     auto* row = new QHBoxLayout;
     auto* name = sourceLabels_[i] = new QLabel;
@@ -131,6 +167,9 @@ RecapPanel::RecapPanel(QWidget* parent) : QWidget{parent} {
     auto* bar = sourceBars_[i] = new QProgressBar;
     bar->setTextVisible(false);
     groupLayout->addWidget(bar);
+    for (auto* child : {static_cast<QWidget*>(name), static_cast<QWidget*>(sourceTotals_[i]),
+                        static_cast<QWidget*>(bar)})
+      child->setAttribute(Qt::WA_TransparentForMouseEvents);
     sourcesLayout->addWidget(group);
   }
   sourcesLayout->addStretch();
@@ -152,6 +191,9 @@ void RecapPanel::setDataset(const Dataset& dataset) {
   donut_->setCounts(dataset.counts);
   for (std::size_t i = 0; i < severityTotals_.size(); ++i) {
     const auto count = dataset.counts[i];
+    severityButtons_[i]->setEnabled(count > 0);
+    severityButtons_[i]->setAccessibleName(
+        QString{"Show %1 entries (%2)"}.arg(severityButtons_[i]->text()).arg(count));
     severityTotals_[i]->setText(QString{"%1 (%2%)"}.arg(count).arg(
         100.0 * static_cast<double>(count) / static_cast<double>(total), 0, 'f', 1));
   }
@@ -163,6 +205,8 @@ void RecapPanel::setDataset(const Dataset& dataset) {
     const auto& [name, count] = top[i];
     auto* label = sourceLabels_[i];
     const auto displayName = name.isEmpty() ? QString{"(no source)"} : name;
+    sourceRows_[i]->setProperty("sourceName", name);
+    sourceRows_[i]->setAccessibleName(QString{"Show %1 entries (%2)"}.arg(displayName).arg(count));
     label->setText(QFontMetrics{label->font()}.elidedText(displayName, Qt::ElideRight, 142));
     label->setAccessibleName(displayName);
     label->setToolTip("<qt>" + displayName.toHtmlEscaped() + "</qt>");

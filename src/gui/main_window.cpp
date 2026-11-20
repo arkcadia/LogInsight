@@ -442,7 +442,21 @@ MainWindow::MainWindow() {
   connect(trace_, &QPushButton::clicked, this, [this] { showCorrelation("trace_id"); });
   connect(request_, &QPushButton::clicked, this, [this] { showCorrelation("request_id"); });
   pages_->addWidget(explorer);
-  recap_ = new RecapPanel;
+  recap_ = new RecapPanel{[this](int level) {
+                            resetExplorerFilters();
+                            severity_->setCurrentIndex(severity_->findData(level));
+                            navigation_->setCurrentRow(1);
+                            table_->setFocus();
+                          },
+                          [this](const QString& source) {
+                            const int index = source_->findData(source);
+                            if (index <= 0)
+                              return;
+                            resetExplorerFilters();
+                            source_->setCurrentIndex(index);
+                            navigation_->setCurrentRow(1);
+                            table_->setFocus();
+                          }};
   pages_->addWidget(recap_);
   status_ = label("Ready");
   status_->setObjectName("statusText");
@@ -598,7 +612,8 @@ void MainWindow::refresh() {
     const QSignalBlocker blocker{source_};
     source_->clear();
     source_->addItem("All sources");
-    source_->addItems(dataset_->sources);
+    for (const auto& source : dataset_->sources)
+      source_->addItem(source, source);
   }
   proxy_->setSource({});
   showDetails({});

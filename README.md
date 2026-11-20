@@ -80,6 +80,7 @@ not been verified.
 1. Click **Load Sample Logs**, or choose **Import Logs → Choose log files** to select one or several files.
 2. Review counts, alerts and import diagnostics in **Overview**. Open **Recap** for the
    severity donut chart and the five sources with the most entries in the current session.
+   Select a severity slice, legend button, or source bar to open matching logs.
 3. Open **Log Explorer** or click a count on the overview. The **Malformed** count jumps to
    diagnostics. Search message text, select a severity or source, or click a column header to sort.
    Click a timeline bucket or open **Time range**, enter one or both UTC bounds, and select **Apply**.

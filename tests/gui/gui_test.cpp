@@ -208,6 +208,34 @@ private slots:
     QCOMPARE(table->model()->rowCount(), 3);
   }
 
+  void followsCompleteRecordsAcrossRotationAndTruncation() {
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const auto path = directory.filePath("service.log");
+    std::ofstream{path.toStdString()} << "first\npar";
+    MainWindow window;
+    window.show();
+    window.findChild<QListWidget*>("navigation")->setCurrentRow(5);
+    window.findChild<QLineEdit*>("livePath")->setText(path);
+    window.findChild<QPushButton*>("startLive")->click();
+    auto* output = window.findChild<QPlainTextEdit*>("liveRecords");
+    QTRY_COMPARE(output->toPlainText(), QString{"first"});
+    std::ofstream{path.toStdString(), std::ios::app} << "tial\n";
+    QTRY_VERIFY(output->toPlainText().contains("partial"));
+    QVERIFY(QFile::rename(path, directory.filePath("service.log.1")));
+    std::ofstream{path.toStdString()} << "after rotation\n";
+    QTRY_VERIFY(output->toPlainText().contains("after rotation"));
+#ifdef Q_OS_UNIX
+    QVERIFY(output->toPlainText().contains("[Log rotated]"));
+#endif
+    std::ofstream{path.toStdString()} << "reset\n";
+    QTRY_VERIFY(output->toPlainText().contains("[Log truncated]\nreset"));
+    window.findChild<QPushButton*>("stopLive")->click();
+    std::ofstream{path.toStdString(), std::ios::app} << "after stop\n";
+    QTest::qWait(250);
+    QVERIFY(!output->toPlainText().contains("after stop"));
+  }
+
   void comparesImportedSessionsBySeverityAndSource() {
     QTemporaryDir directory;
     QVERIFY(directory.isValid());

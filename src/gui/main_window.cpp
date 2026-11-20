@@ -1,5 +1,6 @@
 #include "main_window.hpp"
 #include "comparison_panel.hpp"
+#include "live_panel.hpp"
 #include "loginsight/parsers/timestamp_parser.hpp"
 #include "malformed_panel.hpp"
 #include "recap_panel.hpp"
@@ -145,7 +146,7 @@ MainWindow::MainWindow() {
   auto* side = new QVBoxLayout(sidebar);
   side->setContentsMargins(0, 0, 0, 12);
   auto* navigation = navigation_ = new QListWidget;
-  navigation->addItems({"Overview", "Log Explorer", "Recap", "Malformed", "Compare"});
+  navigation->addItems({"Overview", "Log Explorer", "Recap", "Malformed", "Compare", "Live"});
   navigation->setCurrentRow(0);
   navigation->setObjectName("navigation");
   side->addWidget(navigation);
@@ -488,6 +489,7 @@ MainWindow::MainWindow() {
   pages_->addWidget(malformed_);
   comparison_ = new ComparisonPanel;
   pages_->addWidget(comparison_);
+  pages_->addWidget(new LivePanel);
   status_ = label("Ready");
   status_->setObjectName("statusText");
   status_->setTextFormat(Qt::PlainText);

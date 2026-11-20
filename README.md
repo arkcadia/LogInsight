@@ -119,6 +119,14 @@ Open **Compare** and choose **Use current session as baseline**. Import another 
 see baseline, current, and difference counts for each severity and source. Only summary
 counts are kept for the baseline, and the baseline lasts until the app closes.
 
+### Live file follow
+
+Open **Live**, choose a local file, and select **Follow**. Complete lines appear as the
+file grows. The app detects pathname replacement on Unix and restarts after truncation.
+The live view keeps the most recent 5,000 lines and clips very long lines. It is separate
+from imported sessions and does not apply parser filters or alert rules. **Stop** leaves
+the displayed lines available for inspection.
+
 ### Burst alerts
 
 In **Overview**, select an alert and choose **Open matching records**. The default rule flags
